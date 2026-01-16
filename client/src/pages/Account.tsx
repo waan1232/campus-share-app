@@ -18,10 +18,11 @@ import {
   LogOut, 
   ArrowLeft,
   Camera,
-  Package // Changed icon to Package for listings
+  Package,
+  Wallet
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Item } from "@shared/schema"; // Import Item type if available, or define locally
+import { Item } from "@shared/schema";
 
 export default function AccountPage() {
   const { user, logoutMutation } = useAuth();
@@ -30,28 +31,35 @@ export default function AccountPage() {
   
   const [activeTab, setActiveTab] = useState("profile");
   
-  // Form States
+  // Form States (Profile)
   const [name, setName] = useState(user?.name || "");
   const [email, setEmail] = useState(user?.email || "");
+  
+  // Form States (Payouts)
+  // We use (user as any) here to avoid TypeScript errors if you haven't updated shared/schema.ts yet
+  const [venmo, setVenmo] = useState((user as any)?.venmo_handle || "");
+  const [cashapp, setCashapp] = useState((user as any)?.cashapp_tag || "");
+
+  // Form States (Security)
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  // FETCH REAL DATA: Get My Items
+  // FETCH REAL DATA: Get My Items count
   const { data: myItems } = useQuery<Item[]>({
     queryKey: ["/api/my-items"],
   });
 
-  // Update Profile Mutation
+  // Update Profile Mutation (Handles Name, Email, Venmo, CashApp)
   const updateProfileMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("PATCH", "/api/user", { name, email });
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("PATCH", "/api/user", data);
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Profile updated successfully" });
+      toast({ title: "Settings saved successfully" });
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
     },
-    onError: () => toast({ title: "Failed to update profile", variant: "destructive" })
+    onError: () => toast({ title: "Failed to save settings", variant: "destructive" })
   });
 
   // Change Password Mutation
@@ -72,9 +80,8 @@ export default function AccountPage() {
 
   const tabs = [
     { id: "profile", label: "Edit Profile", icon: User },
+    { id: "billing", label: "Payout Methods", icon: Wallet },
     { id: "security", label: "Security", icon: Lock },
-    { id: "billing", label: "Billing & Payouts", icon: CreditCard },
-    { id: "notifications", label: "Notifications", icon: Bell },
   ];
 
   return (
@@ -123,7 +130,7 @@ export default function AccountPage() {
                   <div className="flex flex-col items-center">
                     <div className="flex items-center gap-2 text-2xl font-bold text-primary">
                       <Package className="h-5 w-5" />
-                      {/* REAL DATA: Shows 0 if loading, or actual count */}
+                      {/* REAL DATA: Shows active listings count */}
                       {myItems ? myItems.length : "-"}
                     </div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Active Listings</p>
@@ -131,7 +138,7 @@ export default function AccountPage() {
                 </div>
                 
                 <div className="mt-6 text-xs text-muted-foreground">
-                  Member since {new Date().getFullYear()} {/* You could use user.createdAt if available */}
+                   Member since 2024
                 </div>
               </CardContent>
             </Card>
@@ -186,22 +193,92 @@ export default function AccountPage() {
                       onChange={(e) => setEmail(e.target.value)} 
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label>Location</Label>
-                      <Input placeholder="Campus Dorm (North)" />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Phone (Optional)</Label>
-                      <Input placeholder="(555) 000-0000" />
-                    </div>
-                  </div>
                   
                   <div className="flex justify-end pt-4">
-                    <Button onClick={() => updateProfileMutation.mutate()} disabled={updateProfileMutation.isPending}>
+                    <Button 
+                      onClick={() => updateProfileMutation.mutate({ name, email })} 
+                      disabled={updateProfileMutation.isPending}
+                    >
                       {updateProfileMutation.isPending ? "Saving..." : "Save Changes"}
                     </Button>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+             {/* --- TAB CONTENT: PAYOUT METHODS (New) --- */}
+             {activeTab === "billing" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Payout Methods</CardTitle>
+                  <CardDescription>
+                    Add your handles so renters can pay you directly.
+                    <br />
+                    <span className="text-xs text-muted-foreground bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded mt-2 inline-block">
+                      Note: Payments happen off-platform via these apps.
+                    </span>
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  
+                  {/* Venmo */}
+                  <div className="flex items-center gap-4 border p-4 rounded-lg bg-white">
+                    <div className="h-10 w-10 bg-[#008CFF] rounded-full flex items-center justify-center text-white font-bold text-sm">
+                      V
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <Label htmlFor="venmo" className="font-semibold text-[#008CFF]">Venmo Handle</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-muted-foreground">@</span>
+                        <Input 
+                          id="venmo" 
+                          className="pl-7"
+                          placeholder="your-username"
+                          value={venmo}
+                          onChange={(e) => setVenmo(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => updateProfileMutation.mutate({ venmo_handle: venmo })}
+                    >
+                      Save
+                    </Button>
+                  </div>
+
+                  {/* CashApp */}
+                  <div className="flex items-center gap-4 border p-4 rounded-lg bg-white">
+                    <div className="h-10 w-10 bg-[#00D632] rounded-full flex items-center justify-center text-white font-bold text-sm">
+                      $
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <Label htmlFor="cashapp" className="font-semibold text-[#00D632]">CashApp Tag</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
+                        <Input 
+                          id="cashapp" 
+                          className="pl-7"
+                          placeholder="your-cashtag"
+                          value={cashapp}
+                          onChange={(e) => setCashapp(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => updateProfileMutation.mutate({ cashapp_tag: cashapp })}
+                    >
+                      Save
+                    </Button>
+                  </div>
+
+                  <div className="text-center text-sm text-muted-foreground pt-4">
+                    Students prefer <strong>Venmo</strong>. We recommend adding that one first!
+                  </div>
+
                 </CardContent>
               </Card>
             )}
@@ -238,26 +315,6 @@ export default function AccountPage() {
                       Update Password
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
-            )}
-
-             {/* --- TAB CONTENT: BILLING (Placeholder) --- */}
-             {activeTab === "billing" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Payout Methods</CardTitle>
-                  <CardDescription>Where should we send your earnings?</CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-col items-center justify-center py-10 gap-4 text-center">
-                  <div className="p-4 bg-muted rounded-full">
-                    <CreditCard className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="font-medium">No payout method added</p>
-                    <p className="text-sm text-muted-foreground">Add a debit card to receive instant payouts.</p>
-                  </div>
-                  <Button variant="outline">Add Payout Method</Button>
                 </CardContent>
               </Card>
             )}
