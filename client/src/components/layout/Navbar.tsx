@@ -27,7 +27,7 @@ export function Navbar() {
       <Link href="/about" className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/about") ? "text-primary font-bold" : "text-muted-foreground"}`}>
         How it Works
       </Link>
-      <Link href="/Inbox" className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/about") ? "text-primary font-bold" : "text-muted-foreground"}`}>
+      <Link href="/inbox" className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/about") ? "text-primary font-bold" : "text-muted-foreground"}`}>
         Inbox
       </Link>
     </>
