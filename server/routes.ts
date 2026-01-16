@@ -10,22 +10,24 @@ import { containsBannedWords } from "@shared/utils";
 export async function registerRoutes(
   httpServer: Server,
   app: Express
+): Promise<Server> {
+  
+  // Auth
+  setupAuth(app);
 
-  // --- ACCOUNT MANAGEMENT ---
+  // --- ACCOUNT MANAGEMENT ROUTES ---
 
   // 1. Update Profile (Name, Email, etc.)
   app.patch("/api/user", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
-    const { name, email, bio, location } = req.body; // We will accept extra fields even if DB doesn't have them yet
+    const { name, email } = req.body; 
 
     try {
-      // Basic update for name/email
       const result = await pool.query(
         `UPDATE users SET name = $1, email = $2 WHERE id = $3 RETURNING id, username, name, email`,
         [name, email, userId]
       );
-      // In a real app, we'd update bio/location here too
       res.json(result.rows[0]);
     } catch (error) {
       console.error("Update error:", error);
@@ -44,7 +46,6 @@ export async function registerRoutes(
     }
 
     try {
-      // Import crypto dynamically to avoid top-level await issues in some envs
       const { scrypt, randomBytes } = await import("crypto");
       const { promisify } = await import("util");
       const scryptAsync = promisify(scrypt);
@@ -64,12 +65,8 @@ export async function registerRoutes(
     }
   });
 
-): Promise<Server> {
-  
-  // Auth
-  setupAuth(app);
+  // --- ITEM ROUTES ---
 
-  // Items
   app.get(api.items.list.path, async (req, res) => {
     const search = req.query.search as string | undefined;
     const category = req.query.category as string | undefined;
@@ -145,6 +142,8 @@ export async function registerRoutes(
     }
   });
 
+  // --- FAVORITE ROUTES ---
+
   app.post(api.favorites.toggle.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
     const isFavorite = await storage.toggleFavorite((req.user as any).id, Number(req.params.itemId));
@@ -157,7 +156,8 @@ export async function registerRoutes(
     res.json(favorites);
   });
 
-  // Rentals
+  // --- RENTAL ROUTES ---
+
   app.post(api.rentals.create.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
     
@@ -167,7 +167,6 @@ export async function registerRoutes(
         startDate: new Date(req.body.startDate),
         endDate: new Date(req.body.endDate),
       };
-      // Validate with schema first
       api.rentals.create.input.parse(body);
 
       const rental = await storage.createRental({
@@ -233,13 +232,11 @@ export async function registerRoutes(
 
   app.delete("/api/rentals/:id", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
-    
-    // For simplicity, just delete. Real app would check ownership.
     await storage.deleteRental(Number(req.params.id));
     res.sendStatus(204);
   });
 
-  // --- FORCE DATABASE SETUP (Kept to ensure table exists) ---
+  // --- FORCE DATABASE SETUP (Ensures messaging works) ---
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -256,11 +253,10 @@ export async function registerRoutes(
   } catch (err) {
     console.error("Error creating messages table:", err);
   }
-  // --------------------------------------------------
 
   // --- MESSAGING SYSTEM ROUTES ---
 
-  // 1. Send a Message
+  // 1. Send Message
   app.post("/api/messages", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     
@@ -280,7 +276,7 @@ export async function registerRoutes(
     }
   });
 
-  // 2. Get My Messages (Inbox)
+  // 2. Get Messages (Inbox)
   app.get("/api/messages", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const myId = (req.user as any).id;
@@ -303,7 +299,7 @@ export async function registerRoutes(
     }
   });
 
-  // 3. Mark messages as read (NOW INSIDE THE FUNCTION)
+  // 3. Mark as Read
   app.post("/api/messages/mark-read", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const { senderId } = req.body;
@@ -320,7 +316,7 @@ export async function registerRoutes(
     }
   });
 
-  // 4. Delete Conversation (NOW INSIDE THE FUNCTION)
+  // 4. Delete Conversation
   app.delete("/api/messages/:otherUserId", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const otherId = Number(req.params.otherUserId);
@@ -349,7 +345,7 @@ export async function registerRoutes(
   return httpServer;
 }
 
-// Helper function outside (this is correct)
+// Helper function outside (Correct placement)
 async function seedDatabase() {
   const existingItems = await storage.getItems();
   if (existingItems.length > 0) return;
