@@ -60,3 +60,18 @@
 .text-gradient {
   @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600;
 }
+/* Fix for transparent inputs and dropdowns */
+select, input, textarea, .SelectContent, .SelectItem {
+  background-color: white !important; /* Forces solid white background */
+  color: black !important;           /* Forces solid black text */
+  border: 1px solid #ccc;            /* Adds a subtle border */
+}
+
+/* Optional: Dark mode override if your app is dark */
+@media (prefers-color-scheme: dark) {
+  select, input, textarea, .SelectContent, .SelectItem {
+    background-color: #1a1a1a !important;
+    color: white !important;
+    border: 1px solid #444;
+  }
+}
