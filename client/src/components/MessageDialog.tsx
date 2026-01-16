@@ -1,36 +1,65 @@
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { MessageSquare } from "lucide-react";
+import { Loader2, Send, Tag } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 interface MessageDialogProps {
   receiverId: number;
-  rentalId?: number;
-  trigger?: React.ReactNode;
+  trigger: React.ReactNode;
+  item?: {
+    id: number;
+    title: string;
+    pricePerDay: number;
+    imageUrl: string;
+  };
 }
 
-export function MessageDialog({ receiverId, rentalId, trigger }: MessageDialogProps) {
+export function MessageDialog({ receiverId, trigger, item }: MessageDialogProps) {
   const [open, setOpen] = useState(false);
   const [content, setContent] = useState("");
+  const [isOffer, setIsOffer] = useState(false);
+  const [offerPrice, setOfferPrice] = useState("");
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const mutation = useMutation({
+  const sendMessage = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", "/api/messages", {
+      const payload: any = {
         receiverId,
-        rentalId,
         content,
-      });
+      };
+
+      if (isOffer && item) {
+        payload.itemId = item.id;
+        // Convert user input (e.g. "20") to cents (2000)
+        payload.offerPrice = Math.round(parseFloat(offerPrice) * 100);
+      }
+
+      await apiRequest("POST", "/api/messages", payload);
     },
     onSuccess: () => {
+      toast({ title: "Message sent!" });
       setOpen(false);
       setContent("");
-      toast({ title: "Message sent!" });
+      setIsOffer(false);
+      setOfferPrice("");
       queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
     },
     onError: () => {
@@ -38,34 +67,105 @@ export function MessageDialog({ receiverId, rentalId, trigger }: MessageDialogPr
     },
   });
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!content.trim()) return;
+    sendMessage.mutate();
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button variant="outline" className="gap-2">
-            <MessageSquare className="h-4 w-4" />
-            Message Owner
-          </Button>
-        )}
-      </DialogTrigger>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Send a Message</DialogTitle>
+          <DialogTitle>Send Message</DialogTitle>
+          <DialogDescription>
+            Start a conversation with the owner.
+          </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <Textarea
-            placeholder="Hi, is this item still available?"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="min-h-[100px]"
-          />
-          <Button 
-            onClick={() => mutation.mutate()} 
-            disabled={!content.trim() || mutation.isPending}
-          >
-            {mutation.isPending ? "Sending..." : "Send Message"}
-          </Button>
-        </div>
+
+        {/* Item Context (If coming from an item page) */}
+        {item && (
+          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg mb-4 border">
+            <img 
+              src={item.imageUrl} 
+              alt={item.title} 
+              className="w-12 h-12 rounded object-cover" 
+            />
+            <div>
+              <p className="font-semibold text-sm line-clamp-1">{item.title}</p>
+              <p className="text-xs text-muted-foreground">
+                Listed at {formatCurrency(item.pricePerDay)}/day
+              </p>
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="message">Message</Label>
+            <Textarea
+              id="message"
+              placeholder={item ? `Hi, is this ${item.title} still available?` : "Type your message..."}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              className="min-h-[100px]"
+            />
+          </div>
+
+          {/* MAKE OFFER TOGGLE */}
+          {item && (
+            <div className="space-y-4 pt-2 border-t">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="offer" 
+                  checked={isOffer} 
+                  onCheckedChange={(checked) => setIsOffer(checked as boolean)} 
+                />
+                <Label htmlFor="offer" className="font-medium cursor-pointer flex items-center gap-2">
+                  <Tag className="h-4 w-4 text-green-600" />
+                  Make a Price Offer
+                </Label>
+              </div>
+
+              {isOffer && (
+                <div className="pl-6 animate-in slide-in-from-top-2">
+                  <Label htmlFor="price" className="text-xs text-muted-foreground">Your Offer (per day)</Label>
+                  <div className="relative mt-1">
+                    <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
+                    <Input
+                      id="price"
+                      type="number"
+                      placeholder={String(item.pricePerDay / 100)}
+                      className="pl-7"
+                      value={offerPrice}
+                      onChange={(e) => setOfferPrice(e.target.value)}
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Original price: {formatCurrency(item.pricePerDay)}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="pt-4">
+            <Button type="submit" disabled={sendMessage.isPending || (isOffer && !offerPrice)}>
+              {sendMessage.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2 h-4 w-4" />
+                  {isOffer ? "Send Offer" : "Send Message"}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
