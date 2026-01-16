@@ -68,8 +68,10 @@ export async function registerRoutes(
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS item_id INTEGER REFERENCES items(id);
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS offer_price INTEGER; -- Price in cents
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS offer_status TEXT DEFAULT 'none'; -- 'pending', 'accepted', 'rejected'
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS start_date TIMESTAMP; -- NEW
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS end_date TIMESTAMP;   -- NEW
     `);
-    console.log("Database schema verified (Offers enabled).");
+    console.log("Database schema verified (Offers & Dates enabled).");
   } catch (err) {
     console.error("Error updating schema:", err);
   }
@@ -238,20 +240,20 @@ export async function registerRoutes(
 
   // --- MESSAGING SYSTEM ROUTES ---
 
-  // 1. Send Message (with optional Offer)
+  // 1. Send Message (with optional Offer & Dates)
   app.post("/api/messages", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     
-    const { receiverId, content, rentalId, itemId, offerPrice } = req.body;
+    const { receiverId, content, rentalId, itemId, offerPrice, startDate, endDate } = req.body;
     const senderId = (req.user as any).id;
 
     try {
       const status = offerPrice ? 'pending' : 'none';
       
       const result = await pool.query(
-        `INSERT INTO messages (sender_id, receiver_id, content, rental_id, item_id, offer_price, offer_status) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [senderId, receiverId, content, rentalId || null, itemId || null, offerPrice || null, status]
+        `INSERT INTO messages (sender_id, receiver_id, content, rental_id, item_id, offer_price, offer_status, start_date, end_date) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        [senderId, receiverId, content, rentalId || null, itemId || null, offerPrice || null, status, startDate || null, endDate || null]
       );
       res.json(result.rows[0]);
     } catch (error) {
@@ -260,19 +262,35 @@ export async function registerRoutes(
     }
   });
 
-  // 2. Respond to Offer (Accept/Reject)
+  // 2. Respond to Offer (Accept/Reject + CREATE RENTAL)
   app.patch("/api/messages/:id/offer", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const msgId = Number(req.params.id);
     const { status } = req.body; // 'accepted' or 'rejected'
 
     try {
-      const result = await pool.query(
+      // 1. Update the message status
+      const msgResult = await pool.query(
         `UPDATE messages SET offer_status = $1 WHERE id = $2 RETURNING *`,
         [status, msgId]
       );
-      res.json(result.rows[0]);
+      const message = msgResult.rows[0];
+
+      // 2. IF ACCEPTED: Create the actual Rental Record
+      if (status === 'accepted' && message.item_id && message.start_date && message.end_date) {
+        // Find the "sender" of the message - they are the Renter
+        // (If I accepted the offer, the person who sent me the offer is the one renting it)
+        await storage.createRental({
+            itemId: message.item_id,
+            renterId: message.sender_id, 
+            startDate: new Date(message.start_date),
+            endDate: new Date(message.end_date)
+        });
+      }
+
+      res.json(message);
     } catch (error) {
+      console.error(error);
       res.status(500).json({ error: "Failed to update offer" });
     }
   });
