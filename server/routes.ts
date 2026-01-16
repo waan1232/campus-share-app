@@ -10,6 +10,60 @@ import { containsBannedWords } from "@shared/utils";
 export async function registerRoutes(
   httpServer: Server,
   app: Express
+
+  // --- ACCOUNT MANAGEMENT ---
+
+  // 1. Update Profile (Name, Email, etc.)
+  app.patch("/api/user", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    const userId = (req.user as any).id;
+    const { name, email, bio, location } = req.body; // We will accept extra fields even if DB doesn't have them yet
+
+    try {
+      // Basic update for name/email
+      const result = await pool.query(
+        `UPDATE users SET name = $1, email = $2 WHERE id = $3 RETURNING id, username, name, email`,
+        [name, email, userId]
+      );
+      // In a real app, we'd update bio/location here too
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error("Update error:", error);
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  // 2. Change Password
+  app.patch("/api/user/password", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    const userId = (req.user as any).id;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+
+    try {
+      // Import crypto dynamically to avoid top-level await issues in some envs
+      const { scrypt, randomBytes } = await import("crypto");
+      const { promisify } = await import("util");
+      const scryptAsync = promisify(scrypt);
+
+      const salt = randomBytes(16).toString("hex");
+      const buf = (await scryptAsync(newPassword, salt, 64)) as Buffer;
+      const hashedPassword = `${buf.toString("hex")}.${salt}`;
+
+      await pool.query(
+        `UPDATE users SET password = $1 WHERE id = $2`,
+        [hashedPassword, userId]
+      );
+      res.sendStatus(200);
+    } catch (error) {
+      console.error("Password reset error:", error);
+      res.status(500).json({ error: "Failed to update password" });
+    }
+  });
+
 ): Promise<Server> {
   
   // Auth
