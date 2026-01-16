@@ -274,3 +274,49 @@ async function seedDatabase() {
   
   console.log("Database seeded successfully!");
 }
+// --- MESSAGING SYSTEM ROUTES ---
+
+  // 1. Send a Message
+  app.post("/api/messages", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    
+    // We expect the frontend to send: { receiverId, content, rentalId (optional) }
+    const { receiverId, content, rentalId } = req.body;
+    const senderId = (req.user as any).id;
+
+    try {
+      const result = await pool.query(
+        `INSERT INTO messages (sender_id, receiver_id, content, rental_id) 
+         VALUES ($1, $2, $3, $4) RETURNING *`,
+        [senderId, receiverId, content, rentalId || null]
+      );
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error("Message error:", error);
+      res.status(500).json({ error: "Failed to send message" });
+    }
+  });
+
+  // 2. Get My Messages (Inbox)
+  app.get("/api/messages", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    const myId = (req.user as any).id;
+
+    try {
+      // Get all messages where I am the sender OR receiver, ordered by newest first
+      const result = await pool.query(
+        `SELECT m.*, 
+                u_sender.username as sender_name, 
+                u_receiver.username as receiver_name
+         FROM messages m
+         JOIN users u_sender ON m.sender_id = u_sender.id
+         JOIN users u_receiver ON m.receiver_id = u_receiver.id
+         WHERE m.sender_id = $1 OR m.receiver_id = $1
+         ORDER BY m.sent_at DESC`,
+        [myId]
+      );
+      res.json(result.rows);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
