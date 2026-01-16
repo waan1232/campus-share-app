@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Link, useLocation } from "wouter"; // Import useLocation
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,26 +10,32 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  User, 
-  Lock, 
-  ShieldCheck, 
-  CreditCard, 
-  Bell, 
-  LogOut, 
-  ArrowLeft,
-  Camera,
-  Package,
-  Wallet,
-  Loader2 // Import Loader
+  User, Lock, ShieldCheck, CreditCard, Bell, LogOut, ArrowLeft, Camera, 
+  Package, Wallet, Loader2, TrendingUp, DollarSign 
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { Item } from "@shared/schema";
 
+// Types for Earnings
+interface EarningTransaction {
+  id: number;
+  title: string;
+  total_earnings: number;
+  days: number;
+  renter_name: string;
+  start_date: string;
+}
+
+interface EarningsData {
+  total: number;
+  history: EarningTransaction[];
+}
+
 export default function AccountPage() {
-  const { user, logoutMutation, isLoading } = useAuth(); // Get isLoading too
+  const { user, logoutMutation, isLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [, setLocation] = useLocation(); // Location hook for redirect
+  const [, setLocation] = useLocation();
   
   const [activeTab, setActiveTab] = useState("profile");
   
@@ -53,7 +59,6 @@ export default function AccountPage() {
       setVenmo((user as any).venmo_handle || "");
       setCashapp((user as any).cashapp_tag || "");
     } else if (!isLoading) {
-      // FIX: If not loading and no user, Redirect to Home
       setLocation("/");
     }
   }, [user, isLoading, setLocation]);
@@ -61,7 +66,13 @@ export default function AccountPage() {
   // FETCH REAL DATA: Get My Items count
   const { data: myItems } = useQuery<Item[]>({
     queryKey: ["/api/my-items"],
-    enabled: !!user, // Only fetch if logged in
+    enabled: !!user,
+  });
+
+  // FETCH REAL DATA: Get Earnings
+  const { data: earnings } = useQuery<EarningsData>({
+    queryKey: ["/api/earnings"],
+    enabled: !!user && activeTab === "billing", // Only fetch when tab is open
   });
 
   // Update Profile Mutation
@@ -91,7 +102,6 @@ export default function AccountPage() {
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" })
   });
 
-  // If loading, show spinner. If no user (and redirecting), show nothing.
   if (isLoading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -102,7 +112,7 @@ export default function AccountPage() {
 
   const tabs = [
     { id: "profile", label: "Edit Profile", icon: User },
-    { id: "billing", label: "Payout Methods", icon: Wallet },
+    { id: "billing", label: "Earnings & Payouts", icon: Wallet },
     { id: "security", label: "Security", icon: Lock },
   ];
 
@@ -227,81 +237,125 @@ export default function AccountPage() {
               </Card>
             )}
 
-             {/* --- TAB CONTENT: PAYOUT METHODS --- */}
+             {/* --- TAB CONTENT: EARNINGS & PAYOUTS --- */}
              {activeTab === "billing" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Payout Methods</CardTitle>
-                  <CardDescription>
-                    Add your handles so renters can pay you directly.
-                    <br />
-                    <span className="text-xs text-muted-foreground bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded mt-2 inline-block">
-                      Note: Payments happen off-platform via these apps.
-                    </span>
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  
-                  {/* Venmo */}
-                  <div className="flex items-center gap-4 border p-4 rounded-lg bg-white">
-                    <div className="h-10 w-10 bg-[#008CFF] rounded-full flex items-center justify-center text-white font-bold text-sm">
-                      V
+              <div className="space-y-6">
+                
+                {/* 1. Total Earnings Card */}
+                <Card className="bg-gradient-to-br from-gray-900 to-gray-800 text-white border-none shadow-xl">
+                  <CardContent className="p-6">
+                    <div className="flex justify-between items-start mb-6">
+                      <div>
+                        <p className="text-gray-400 font-medium mb-1">Total Lifetime Earnings</p>
+                        <h2 className="text-4xl font-bold font-display">
+                          {earnings ? formatCurrency(earnings.total) : "..."}
+                        </h2>
+                      </div>
+                      <div className="p-3 bg-white/10 rounded-full">
+                        <TrendingUp className="h-6 w-6 text-green-400" />
+                      </div>
                     </div>
-                    <div className="flex-1 space-y-1">
-                      <Label htmlFor="venmo" className="font-semibold text-[#008CFF]">Venmo Handle</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-muted-foreground">@</span>
+                    <div className="flex gap-4 text-sm">
+                      <div className="bg-white/10 px-3 py-1 rounded-full flex items-center gap-2">
+                        <Package className="h-3 w-3" /> {earnings?.history.length || 0} Transactions
+                      </div>
+                      <div className="bg-white/10 px-3 py-1 rounded-full flex items-center gap-2">
+                         <DollarSign className="h-3 w-3" /> Payouts via Venmo
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* 2. Payout Methods */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Payout Destination</CardTitle>
+                    <CardDescription>Where should students send your money?</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center gap-4 border p-4 rounded-lg bg-white">
+                      <div className="h-10 w-10 bg-[#008CFF] rounded-full flex items-center justify-center text-white font-bold text-sm">
+                        V
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <Label htmlFor="venmo" className="font-semibold text-[#008CFF]">Venmo Handle</Label>
                         <Input 
                           id="venmo" 
-                          className="pl-7"
-                          placeholder="your-username"
+                          className="pl-3"
+                          placeholder="@username"
                           value={venmo}
                           onChange={(e) => setVenmo(e.target.value)}
                         />
                       </div>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => updateProfileMutation.mutate({ venmo_handle: venmo })}
+                      >
+                        Save
+                      </Button>
                     </div>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => updateProfileMutation.mutate({ venmo_handle: venmo })}
-                    >
-                      Save
-                    </Button>
-                  </div>
 
-                  {/* CashApp */}
-                  <div className="flex items-center gap-4 border p-4 rounded-lg bg-white">
-                    <div className="h-10 w-10 bg-[#00D632] rounded-full flex items-center justify-center text-white font-bold text-sm">
-                      $
-                    </div>
-                    <div className="flex-1 space-y-1">
-                      <Label htmlFor="cashapp" className="font-semibold text-[#00D632]">CashApp Tag</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
+                    <div className="flex items-center gap-4 border p-4 rounded-lg bg-white">
+                      <div className="h-10 w-10 bg-[#00D632] rounded-full flex items-center justify-center text-white font-bold text-sm">
+                        $
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <Label htmlFor="cashapp" className="font-semibold text-[#00D632]">CashApp Tag</Label>
                         <Input 
                           id="cashapp" 
-                          className="pl-7"
-                          placeholder="your-cashtag"
+                          className="pl-3"
+                          placeholder="$cashtag"
                           value={cashapp}
                           onChange={(e) => setCashapp(e.target.value)}
                         />
                       </div>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => updateProfileMutation.mutate({ cashapp_tag: cashapp })}
+                      >
+                        Save
+                      </Button>
                     </div>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => updateProfileMutation.mutate({ cashapp_tag: cashapp })}
-                    >
-                      Save
-                    </Button>
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  <div className="text-center text-sm text-muted-foreground pt-4">
-                    Students prefer <strong>Venmo</strong>. We recommend adding that one first!
-                  </div>
-
-                </CardContent>
-              </Card>
+                {/* 3. Recent History Table */}
+                <Card>
+                   <CardHeader>
+                    <CardTitle>Recent Transactions</CardTitle>
+                   </CardHeader>
+                   <CardContent className="p-0">
+                     {earnings && earnings.history.length > 0 ? (
+                       <div className="divide-y">
+                         {earnings.history.map((tx) => (
+                           <div key={tx.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
+                             <div className="flex gap-3 items-center">
+                               <div className="h-10 w-10 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
+                                 <DollarSign className="h-5 w-5" />
+                               </div>
+                               <div>
+                                 <p className="font-bold text-sm">{tx.title}</p>
+                                 <p className="text-xs text-muted-foreground">Rented by {tx.renter_name} • {tx.days} Days</p>
+                               </div>
+                             </div>
+                             <div className="text-right">
+                               <p className="font-bold text-green-600">+{formatCurrency(tx.total_earnings)}</p>
+                               <p className="text-xs text-muted-foreground">{new Date(tx.start_date).toLocaleDateString()}</p>
+                             </div>
+                           </div>
+                         ))}
+                       </div>
+                     ) : (
+                       <div className="p-8 text-center text-muted-foreground">
+                         <Wallet className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                         <p>No completed rentals yet.</p>
+                       </div>
+                     )}
+                   </CardContent>
+                </Card>
+              </div>
             )}
 
             {/* --- TAB CONTENT: SECURITY --- */}
