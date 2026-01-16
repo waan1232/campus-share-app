@@ -1,7 +1,16 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { GraduationCap, LogOut, Menu, PlusCircle, Search, User, MessageSquare } from "lucide-react"; // Added MessageSquare import
+import { 
+  GraduationCap, 
+  LogOut, 
+  Menu, 
+  PlusCircle, 
+  Search, 
+  User, 
+  MessageSquare, 
+  Settings // <--- Added Settings Icon
+} from "lucide-react";
 import { useState } from "react";
 import {
   DropdownMenu,
@@ -28,7 +37,7 @@ export function Navbar() {
         How it Works
       </Link>
       
-      {/* FIX 1: Only show Inbox if user is logged in & Fix the isActive check */}
+      {/* Inbox Link (Desktop Nav) */}
       {user && (
         <Link href="/inbox" className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/inbox") ? "text-primary font-bold" : "text-muted-foreground"}`}>
           Inbox
@@ -76,14 +85,22 @@ export function Navbar() {
                     </div>
                   </div>
                   <DropdownMenuSeparator />
+                  
                   <DropdownMenuItem asChild>
                     <Link href="/dashboard" className="cursor-pointer">
                       <User className="mr-2 h-4 w-4" />
                       Dashboard
                     </Link>
                   </DropdownMenuItem>
+
+                  {/* --- NEW ACCOUNT SETTINGS LINK --- */}
+                  <DropdownMenuItem asChild>
+                    <Link href="/account" className="cursor-pointer">
+                      <Settings className="mr-2 h-4 w-4" />
+                      Account Settings
+                    </Link>
+                  </DropdownMenuItem>
                   
-                  {/* Added Inbox to Dropdown for convenience */}
                   <DropdownMenuItem asChild>
                     <Link href="/inbox" className="cursor-pointer">
                       <MessageSquare className="mr-2 h-4 w-4" />
@@ -137,9 +154,11 @@ export function Navbar() {
                   <Link href="/items" onClick={() => setIsOpen(false)} className="text-lg font-medium">Browse Gear</Link>
                   <Link href="/about" onClick={() => setIsOpen(false)} className="text-lg font-medium">How it Works</Link>
                   
-                  {/* FIX 2: Mobile Inbox Link */}
                   {user && (
-                    <Link href="/inbox" onClick={() => setIsOpen(false)} className="text-lg font-medium">Inbox</Link>
+                    <>
+                      <Link href="/inbox" onClick={() => setIsOpen(false)} className="text-lg font-medium">Inbox</Link>
+                      <Link href="/account" onClick={() => setIsOpen(false)} className="text-lg font-medium">Account Settings</Link>
+                    </>
                   )}
 
                   {!user && (
