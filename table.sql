@@ -34,3 +34,12 @@ WITH (OIDS=FALSE);
 ALTER TABLE "session" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
 
 CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
+CREATE TABLE IF NOT EXISTS messages (
+  id SERIAL PRIMARY KEY,
+  sender_id INTEGER REFERENCES users(id),
+  receiver_id INTEGER REFERENCES users(id),
+  rental_id INTEGER REFERENCES rentals(id), -- Optional: links chat to a specific rental
+  content TEXT NOT NULL,
+  sent_at TIMESTAMP DEFAULT NOW(),
+  read BOOLEAN DEFAULT FALSE
+);
