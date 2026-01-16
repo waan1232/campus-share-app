@@ -1,0 +1,62 @@
+2026-01-14 23:53:25.25
+ea0df998
+System
+command finished with error [node ./dist/index.cjs]: signal: terminated
+2026-01-14 23:53:25.27
+ea0df998
+System
+main done, exiting
+2026-01-14 23:54:11.54
+12bf8f0d
+User
+4:54:11 AM [express] GET /api/rentals 304 in 2542ms :: {"outgoing":[{"id":1,"itemId":3,"renterId":5,"startDate":"2026-01-15T04:26:32.711Z","endDate":"2026-01-18T04:26:32.711Z","status":"completed","createdAt":"2026-01-15T04:26:35.105Z","item":{"id":3,"ownerId":1,"title":"Spikeball Pro Set","description":"Complete set with 3 balls and carrying bag. Good condition.","category":"Sports","pricePerDay":800,"imageUrl":"https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.522Z"}}],"incoming":[]}
+2026-01-14 23:54:14.56
+12bf8f0d
+User
+4:54:14 AM [express] GET /api/items 304 in 184ms :: [{"id":6,"ownerId":5,"title":"cock and balls","description":"who knows","category":"Other","pricePerDay":10000,"imageUrl":"","isAvailable":true,"createdAt":"2026-01-15T04:19:13.843Z","ownerName":"john doe"},{"id":5,"ownerId":1,"title":"Canon EOS Rebel T7","description":"DSLR camera with 18-55mm lens. Great for photography class projects.","category":"Electronics","pricePerDay":3500,"imageUrl":"https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.615Z","ownerName":"Admin User"},{"id":4,"ownerId":1,"title":"Men's Formal Suit (M)","description":"Navy blue suit, size 40R. Perfect for presentations or formal events.","category":"Other","pricePerDay":2500,"imageUrl":"https://images.unsplash.com/photo-1594938298603-c8148c47e356?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.568Z","ownerName":"Admin User"},{"id":3,"ownerId":1,"title":"Spikeball Pro Set","description":"Complete set with 3 balls and carrying bag. Good condition.","category":"Sports","pricePerDay":800,"imageUrl":"https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.522Z","ownerName":"Admin User"},{"id":2,"ownerId":1,"title":"JBL Flip 5 Speaker","description":"Waterproof portable bluetooth speaker. Great sound for dorm parties.","category":"Party","pricePerDay":1000,"imageUrl":"https://images.unsplash.com/photo-1612444530582-fc66183b16f7?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.477Z","ownerName":"Admin User"},{"id":1,"ownerId":1,"title":"TI-84 Plus CE Calculator","description":"Color graphing calculator, perfect for Calculus/Stats. Includes charging cable.","category":"Textbooks","pricePerDay":500,"imageUrl":"https://images.unsplash.com/photo-1596200923062-8e7c1c633a16?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.429Z","ownerName":"Admin User"}]
+2026-01-14 23:55:16.39
+12bf8f0d
+User
+4:55:16 AM [express] POST /api/logout 200 in 556ms :: {"message":"Logged out"}
+2026-01-14 23:56:07.14
+12bf8f0d
+User
+4:56:07 AM [express] POST /api/register 201 in 638ms :: {"id":6,"username":"marietweet123","password":"f3c21f5435a8a6f46e150dbc4d13da0ee403b6fe889039ea5a725bb6f89e28f7353b23c85cdf518b98847592c941157f5e13305c7e6eb9db87652a437cc2a6a8.5cf48234cfa2afb95c076b2bace59f9a","name":"lisa hale","email":"lisa.hale@harvard.edu","createdAt":"2026-01-15T04:56:06.972Z"}
+2026-01-14 23:56:24.16
+12bf8f0d
+User
+4:56:24 AM [express] GET /api/items/4 200 in 471ms :: {"id":4,"ownerId":1,"title":"Men's Formal Suit (M)","description":"Navy blue suit, size 40R. Perfect for presentations or formal events.","category":"Other","pricePerDay":2500,"imageUrl":"https://images.unsplash.com/photo-1594938298603-c8148c47e356?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.568Z","ownerName":"Admin User"}
+2026-01-14 23:56:53.17
+12bf8f0d
+User
+4:56:53 AM [express] POST /api/rentals 201 in 467ms :: {"id":2,"itemId":4,"renterId":6,"startDate":"2026-01-14T05:00:00.000Z","endDate":"2026-02-16T05:00:00.000Z","status":"pending","createdAt":"2026-01-15T04:56:53.096Z"}
+2026-01-14 23:56:56.55
+12bf8f0d
+User
+4:56:56 AM [express] POST /api/logout 200 in 229ms :: {"message":"Logged out"}
+2026-01-14 23:57:00.79
+12bf8f0d
+User
+4:57:00 AM [express] POST /api/login 401 in 136ms
+2026-01-14 23:57:03.86
+12bf8f0d
+User
+4:57:03 AM [express] POST /api/login 401 in 135ms
+2026-01-14 23:57:22.06
+12bf8f0d
+User
+4:57:22 AM [express] POST /api/login 200 in 565ms :: {"id":1,"username":"campus_admin","password":"3f3095c32e50732094427440bcb7795797065decb797d5667bc8aa8c9721357a672830e74f00f5dbf65a000d806a3a9c8a47348cde450b86ce3e35b34a9896a6.4de5e330563cff8aa7b0cf6c3668fcae","name":"Admin User","email":"admin@college.edu","createdAt":"2026-01-15T04:06:45.372Z"}
+2026-01-14 23:57:22.35
+12bf8f0d
+User
+4:57:22 AM [express] GET /api/rentals 200 in 233ms :: {"outgoing":[],"incoming":[{"id":1,"itemId":3,"renterId":5,"startDate":"2026-01-15T04:26:32.711Z","endDate":"2026-01-18T04:26:32.711Z","status":"completed","createdAt":"2026-01-15T04:26:35.105Z","item":{"id":3,"ownerId":1,"title":"Spikeball Pro Set","description":"Complete set with 3 balls and carrying bag. Good condition.","category":"Sports","pricePerDay":800,"imageUrl":"https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.522Z"},"renter":{"id":5,"username":"petunia","password":"111d68e381fdf3437abc8e70643af5b3d9ba7f798de333344c10f91f9ccd86c07a3e911662cf332513ee7d2c0a1f64019ea632b9a5428d5dd73e4644d9e3cca0.e079ea51c9c861a78d8277890be36034","name":"john doe","email":"petunia@harvard.edu","createdAt":"2026-01-15T04:17:41.927Z"}},{"id":2,"itemId":4,"renterId":6,"startDate":"2026-01-14T05:00:00.000Z","endDate":"2026-02-16T05:00:00.000Z","status":"pending","createdAt":"2026-01-15T04:56:53.096Z","item":{"id":4,"ownerId":1,"title":"Men's Formal Suit (M)","description":"Navy blue suit, size 40R. Perfect for presentations or formal events.","category":"Other","pricePerDay":2500,"imageUrl":"https://images.unsplash.com/photo-1594938298603-c8148c47e356?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.568Z"},"renter":{"id":6,"username":"marietweet123","password":"f3c21f5435a8a6f46e150dbc4d13da0ee403b6fe889039ea5a725bb6f89e28f7353b23c85cdf518b98847592c941157f5e13305c7e6eb9db87652a437cc2a6a8.5cf48234cfa2afb95c076b2bace59f9a","name":"lisa hale","email":"lisa.hale@harvard.edu","createdAt":"2026-01-15T04:56:06.972Z"}}]}
+2026-01-14 23:57:31.07
+12bf8f0d
+User
+4:57:31 AM [express] PATCH /api/rentals/2/status 200 in 187ms :: {"id":2,"itemId":4,"renterId":6,"startDate":"2026-01-14T05:00:00.000Z","endDate":"2026-02-16T05:00:00.000Z","status":"approved","createdAt":"2026-01-15T04:56:53.096Z"}
+2026-01-14 23:57:31.34
+12bf8f0d
+User
+4:57:31 AM [express] GET /api/rentals 200 in 234ms :: {"outgoing":[],"incoming":[{"id":1,"itemId":3,"renterId":5,"startDate":"2026-01-15T04:26:32.711Z","endDate":"2026-01-18T04:26:32.711Z","status":"completed","createdAt":"2026-01-15T04:26:35.105Z","item":{"id":3,"ownerId":1,"title":"Spikeball Pro Set","description":"Complete set with 3 balls and carrying bag. Good condition.","category":"Sports","pricePerDay":800,"imageUrl":"https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.522Z"},"renter":{"id":5,"username":"petunia","password":"111d68e381fdf3437abc8e70643af5b3d9ba7f798de333344c10f91f9ccd86c07a3e911662cf332513ee7d2c0a1f64019ea632b9a5428d5dd73e4644d9e3cca0.e079ea51c9c861a78d8277890be36034","name":"john doe","email":"petunia@harvard.edu","createdAt":"2026-01-15T04:17:41.927Z"}},{"id":2,"itemId":4,"renterId":6,"startDate":"2026-01-14T05:00:00.000Z","endDate":"2026-02-16T05:00:00.000Z","status":"approved","createdAt":"2026-01-15T04:56:53.096Z","item":{"id":4,"ownerId":1,"title":"Men's Formal Suit (M)","description":"Navy blue suit, size 40R. Perfect for presentations or formal events.","category":"Other","pricePerDay":2500,"imageUrl":"https://images.unsplash.com/photo-1594938298603-c8148c47e356?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.568Z"},"renter":{"id":6,"username":"marietweet123","password":"f3c21f5435a8a6f46e150dbc4d13da0ee403b6fe889039ea5a725bb6f89e28f7353b23c85cdf518b98847592c941157f5e13305c7e6eb9db87652a437cc2a6a8.5cf48234cfa2afb95c076b2bace59f9a","name":"lisa hale","email":"lisa.hale@harvard.edu","createdAt":"2026-01-15T04:56:06.972Z"}}]}
+Wrap
+Colors

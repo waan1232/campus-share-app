@@ -1,0 +1,84 @@
+14 23:15:40.67
+485aec34
+User
+4:15:40 AM [express] POST /api/login 401 in 456ms
+2026-01-14 23:15:45.78
+485aec34
+User
+4:15:45 AM [express] POST /api/login 200 in 345ms :: {"id":2,"username":"nathanh91","password":"78c594d35b44746077f2f318015769e26e25327e988ee597ce290d589c915351c54ff8f5a151ad514457af365c5c169264863aabb3287e43ddf62b78b081a168.3ff64bd23d3e7ebb4a03a9fcbe7814ee","name":"Nathan Hale","email":"n.hale@bowdoin.edu","createdAt":"2026-01-15T04:07:19.754Z"}
+2026-01-14 23:15:46.09
+485aec34
+User
+4:15:46 AM [express] GET /api/rentals 200 in 228ms :: {"outgoing":[],"incoming":[]}
+2026-01-14 23:17:16.44
+485aec34
+User
+4:17:16 AM [express] POST /api/logout 200 in 3007ms :: {"message":"Logged out"}
+2026-01-14 23:17:18.86
+485aec34
+User
+4:17:18 AM [express] POST /api/logout 200 in 2466ms :: {"message":"Logged out"}
+2026-01-14 23:17:42.10
+485aec34
+User
+4:17:42 AM [express] POST /api/register 201 in 2682ms :: {"id":5,"username":"petunia","password":"111d68e381fdf3437abc8e70643af5b3d9ba7f798de333344c10f91f9ccd86c07a3e911662cf332513ee7d2c0a1f64019ea632b9a5428d5dd73e4644d9e3cca0.e079ea51c9c861a78d8277890be36034","name":"john doe","email":"petunia@harvard.edu","createdAt":"2026-01-15T04:17:41.927Z"}
+2026-01-14 23:17:55.11
+485aec34
+User
+4:17:55 AM [express] POST /api/logout 200 in 2526ms :: {"message":"Logged out"}
+2026-01-14 23:18:11.34
+485aec34
+User
+4:18:11 AM [express] POST /api/login 200 in 631ms :: {"id":5,"username":"petunia","password":"111d68e381fdf3437abc8e70643af5b3d9ba7f798de333344c10f91f9ccd86c07a3e911662cf332513ee7d2c0a1f64019ea632b9a5428d5dd73e4644d9e3cca0.e079ea51c9c861a78d8277890be36034","name":"john doe","email":"petunia@harvard.edu","createdAt":"2026-01-15T04:17:41.927Z"}
+2026-01-14 23:18:17.51
+485aec34
+User
+4:18:17 AM [express] GET /api/items 200 in 189ms :: [{"id":5,"ownerId":1,"title":"Canon EOS Rebel T7","description":"DSLR camera with 18-55mm lens. Great for photography class projects.","category":"Electronics","pricePerDay":3500,"imageUrl":"https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.615Z","ownerName":"Admin User"},{"id":4,"ownerId":1,"title":"Men's Formal Suit (M)","description":"Navy blue suit, size 40R. Perfect for presentations or formal events.","category":"Other","pricePerDay":2500,"imageUrl":"https://images.unsplash.com/photo-1594938298603-c8148c47e356?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.568Z","ownerName":"Admin User"},{"id":3,"ownerId":1,"title":"Spikeball Pro Set","description":"Complete set with 3 balls and carrying bag. Good condition.","category":"Sports","pricePerDay":800,"imageUrl":"https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.522Z","ownerName":"Admin User"},{"id":2,"ownerId":1,"title":"JBL Flip 5 Speaker","description":"Waterproof portable bluetooth speaker. Great sound for dorm parties.","category":"Party","pricePerDay":1000,"imageUrl":"https://images.unsplash.com/photo-1612444530582-fc66183b16f7?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.477Z","ownerName":"Admin User"},{"id":1,"ownerId":1,"title":"TI-84 Plus CE Calculator","description":"Color graphing calculator, perfect for Calculus/Stats. Includes charging cable.","category":"Textbooks","pricePerDay":500,"imageUrl":"https://images.unsplash.com/photo-1596200923062-8e7c1c633a16?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.429Z","ownerName":"Admin User"}]
+2026-01-14 23:18:39.83
+485aec34
+User
+4:18:39 AM [express] GET /api/items/3 200 in 510ms :: {"id":3,"ownerId":1,"title":"Spikeball Pro Set","description":"Complete set with 3 balls and carrying bag. Good condition.","category":"Sports","pricePerDay":800,"imageUrl":"https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.522Z","ownerName":"Admin User"}
+2026-01-14 23:18:46.34
+485aec34
+User
+4:18:46 AM [express] POST /api/rentals 400 in 144ms :: {"message":"Invalid input"}
+2026-01-14 23:18:47.87
+485aec34
+User
+4:18:47 AM [express] POST /api/rentals 400 in 143ms :: {"message":"Invalid input"}
+2026-01-14 23:19:13.92
+485aec34
+User
+4:19:13 AM [express] POST /api/items 201 in 473ms :: {"id":6,"ownerId":5,"title":"cock and balls","description":"who knows","category":"Other","pricePerDay":10000,"imageUrl":"","isAvailable":true,"createdAt":"2026-01-15T04:19:13.843Z"}
+2026-01-14 23:19:16.59
+485aec34
+User
+4:19:16 AM [express] GET /api/items 200 in 185ms :: [{"id":6,"ownerId":5,"title":"cock and balls","description":"who knows","category":"Other","pricePerDay":10000,"imageUrl":"","isAvailable":true,"createdAt":"2026-01-15T04:19:13.843Z","ownerName":"john doe"},{"id":5,"ownerId":1,"title":"Canon EOS Rebel T7","description":"DSLR camera with 18-55mm lens. Great for photography class projects.","category":"Electronics","pricePerDay":3500,"imageUrl":"https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.615Z","ownerName":"Admin User"},{"id":4,"ownerId":1,"title":"Men's Formal Suit (M)","description":"Navy blue suit, size 40R. Perfect for presentations or formal events.","category":"Other","pricePerDay":2500,"imageUrl":"https://images.unsplash.com/photo-1594938298603-c8148c47e356?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.568Z","ownerName":"Admin User"},{"id":3,"ownerId":1,"title":"Spikeball Pro Set","description":"Complete set with 3 balls and carrying bag. Good condition.","category":"Sports","pricePerDay":800,"imageUrl":"https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.522Z","ownerName":"Admin User"},{"id":2,"ownerId":1,"title":"JBL Flip 5 Speaker","description":"Waterproof portable bluetooth speaker. Great sound for dorm parties.","category":"Party","pricePerDay":1000,"imageUrl":"https://images.unsplash.com/photo-1612444530582-fc66183b16f7?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.477Z","ownerName":"Admin User"},{"id":1,"ownerId":1,"title":"TI-84 Plus CE Calculator","description":"Color graphing calculator, perfect for Calculus/Stats. Includes charging cable.","category":"Textbooks","pricePerDay":500,"imageUrl":"https://images.unsplash.com/photo-1596200923062-8e7c1c633a16?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.429Z","ownerName":"Admin User"}]
+2026-01-14 23:19:20.06
+485aec34
+User
+4:19:20 AM [express] GET /api/items/6 200 in 185ms :: {"id":6,"ownerId":5,"title":"cock and balls","description":"who knows","category":"Other","pricePerDay":10000,"imageUrl":"","isAvailable":true,"createdAt":"2026-01-15T04:19:13.843Z","ownerName":"john doe"}
+2026-01-14 23:23:25.87
+485aec34
+User
+4:23:25 AM [express] GET /api/user 200 in 137ms :: {"id":5,"username":"petunia","password":"111d68e381fdf3437abc8e70643af5b3d9ba7f798de333344c10f91f9ccd86c07a3e911662cf332513ee7d2c0a1f64019ea632b9a5428d5dd73e4644d9e3cca0.e079ea51c9c861a78d8277890be36034","name":"john doe","email":"petunia@harvard.edu","createdAt":"2026-01-15T04:17:41.927Z"}
+2026-01-14 23:23:25.91
+485aec34
+User
+4:23:25 AM [express] GET /api/rentals 200 in 219ms :: {"outgoing":[],"incoming":[]}
+2026-01-14 23:23:28.46
+485aec34
+User
+4:23:28 AM [express] GET /api/items 304 in 176ms :: [{"id":6,"ownerId":5,"title":"cock and balls","description":"who knows","category":"Other","pricePerDay":10000,"imageUrl":"","isAvailable":true,"createdAt":"2026-01-15T04:19:13.843Z","ownerName":"john doe"},{"id":5,"ownerId":1,"title":"Canon EOS Rebel T7","description":"DSLR camera with 18-55mm lens. Great for photography class projects.","category":"Electronics","pricePerDay":3500,"imageUrl":"https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.615Z","ownerName":"Admin User"},{"id":4,"ownerId":1,"title":"Men's Formal Suit (M)","description":"Navy blue suit, size 40R. Perfect for presentations or formal events.","category":"Other","pricePerDay":2500,"imageUrl":"https://images.unsplash.com/photo-1594938298603-c8148c47e356?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.568Z","ownerName":"Admin User"},{"id":3,"ownerId":1,"title":"Spikeball Pro Set","description":"Complete set with 3 balls and carrying bag. Good condition.","category":"Sports","pricePerDay":800,"imageUrl":"https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.522Z","ownerName":"Admin User"},{"id":2,"ownerId":1,"title":"JBL Flip 5 Speaker","description":"Waterproof portable bluetooth speaker. Great sound for dorm parties.","category":"Party","pricePerDay":1000,"imageUrl":"https://images.unsplash.com/photo-1612444530582-fc66183b16f7?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.477Z","ownerName":"Admin User"},{"id":1,"ownerId":1,"title":"TI-84 Plus CE Calculator","description":"Color graphing calculator, perfect for Calculus/Stats. Includes charging cable.","category":"Textbooks","pricePerDay":500,"imageUrl":"https://images.unsplash.com/photo-1596200923062-8e7c1c633a16?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.429Z","ownerName":"Admin User"}]
+2026-01-14 23:23:31.58
+485aec34
+User
+4:23:31 AM [express] GET /api/items/3 304 in 176ms :: {"id":3,"ownerId":1,"title":"Spikeball Pro Set","description":"Complete set with 3 balls and carrying bag. Good condition.","category":"Sports","pricePerDay":800,"imageUrl":"https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.522Z","ownerName":"Admin User"}
+2026-01-14 23:23:31.58
+485aec34
+User
+4:23:31 AM [express] GET /api/items/3 304 in 176ms :: {"id":3,"ownerId":1,"title":"Spikeball Pro Set","description":"Complete set with 3 balls and carrying bag. Good condition.","category":"Sports","pricePerDay":800,"imageUrl":"https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=800&q=80","isAvailable":true,"createdAt":"2026-01-15T04:06:45.522Z","ownerName":"Admin User"}
+2026-01-14 23:23:37.11
+485aec34
+User
+4:23:37 AM [express] POST /api/rentals 400 in 131ms :: {"message":"Invalid input"}
