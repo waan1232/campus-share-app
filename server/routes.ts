@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { setupAuth } from "./auth";
 import { z } from "zod";
-import { pool } from "./db"; // <--- Added this missing import
+import { pool } from "./db";
 import { containsBannedWords } from "@shared/utils";
 
 export async function registerRoutes(
@@ -185,7 +185,7 @@ export async function registerRoutes(
     res.sendStatus(204);
   });
 
-  // --- FORCE DATABASE SETUP (Add this temporarily) ---
+  // --- FORCE DATABASE SETUP (Kept to ensure table exists) ---
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -205,9 +205,6 @@ export async function registerRoutes(
   // --------------------------------------------------
 
   // --- MESSAGING SYSTEM ROUTES ---
-  // ... (rest of your message routes are below)
-  
-  // --- MESSAGING SYSTEM ROUTES (MOVED INSIDE) ---
 
   // 1. Send a Message
   app.post("/api/messages", async (req, res) => {
@@ -252,16 +249,7 @@ export async function registerRoutes(
     }
   });
 
-  // Seed Data
-  try {
-    await seedDatabase();
-  } catch (e) {
-    console.error("Seeding failed, but continuing:", e);
-  }
-
-  return httpServer;
-}
-// 3. Mark messages as read (Triggered when you open a chat)
+  // 3. Mark messages as read (NOW INSIDE THE FUNCTION)
   app.post("/api/messages/mark-read", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const { senderId } = req.body;
@@ -278,7 +266,7 @@ export async function registerRoutes(
     }
   });
 
-  // 4. Delete Conversation
+  // 4. Delete Conversation (NOW INSIDE THE FUNCTION)
   app.delete("/api/messages/:otherUserId", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const otherId = Number(req.params.otherUserId);
@@ -296,6 +284,17 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to delete conversation" });
     }
   });
+
+  // Seed Data
+  try {
+    await seedDatabase();
+  } catch (e) {
+    console.error("Seeding failed, but continuing:", e);
+  }
+
+  return httpServer;
+}
+
 // Helper function outside (this is correct)
 async function seedDatabase() {
   const existingItems = await storage.getItems();
