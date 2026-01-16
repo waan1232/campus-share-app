@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { GraduationCap, LogOut, Menu, PlusCircle, Search, User } from "lucide-react";
+import { GraduationCap, LogOut, Menu, PlusCircle, Search, User, MessageSquare } from "lucide-react"; // Added MessageSquare import
 import { useState } from "react";
 import {
   DropdownMenu,
@@ -27,9 +27,13 @@ export function Navbar() {
       <Link href="/about" className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/about") ? "text-primary font-bold" : "text-muted-foreground"}`}>
         How it Works
       </Link>
-      <Link href="/inbox" className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/about") ? "text-primary font-bold" : "text-muted-foreground"}`}>
-        Inbox
-      </Link>
+      
+      {/* FIX 1: Only show Inbox if user is logged in & Fix the isActive check */}
+      {user && (
+        <Link href="/inbox" className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/inbox") ? "text-primary font-bold" : "text-muted-foreground"}`}>
+          Inbox
+        </Link>
+      )}
     </>
   );
 
@@ -78,6 +82,15 @@ export function Navbar() {
                       Dashboard
                     </Link>
                   </DropdownMenuItem>
+                  
+                  {/* Added Inbox to Dropdown for convenience */}
+                  <DropdownMenuItem asChild>
+                    <Link href="/inbox" className="cursor-pointer">
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      Inbox
+                    </Link>
+                  </DropdownMenuItem>
+
                   <DropdownMenuItem asChild>
                     <Link href="/items/new" className="cursor-pointer sm:hidden">
                       <PlusCircle className="mr-2 h-4 w-4" />
@@ -123,6 +136,12 @@ export function Navbar() {
                 <nav className="flex flex-col gap-4">
                   <Link href="/items" onClick={() => setIsOpen(false)} className="text-lg font-medium">Browse Gear</Link>
                   <Link href="/about" onClick={() => setIsOpen(false)} className="text-lg font-medium">How it Works</Link>
+                  
+                  {/* FIX 2: Mobile Inbox Link */}
+                  {user && (
+                    <Link href="/inbox" onClick={() => setIsOpen(false)} className="text-lg font-medium">Inbox</Link>
+                  )}
+
                   {!user && (
                     <Link href="/login" onClick={() => setIsOpen(false)} className="text-lg font-medium">Log in</Link>
                   )}
