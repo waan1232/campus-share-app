@@ -268,8 +268,17 @@ export default function ItemDetail() {
                         </Button>
 
                         {/* Message Button */}
+                        {/* Message Button */}
                         <MessageDialog 
                           receiverId={item.ownerId}
+                          // --- PASS THE ITEM DATA HERE ---
+                          item={{
+                            id: item.id,
+                            title: item.title,
+                            pricePerDay: item.pricePerDay,
+                            imageUrl: item.imageUrl
+                          }}
+                          // -------------------------------
                           trigger={
                             <Button variant="outline" className="w-full h-12">
                                 <MessageSquare className="mr-2 h-4 w-4" />
