@@ -185,6 +185,28 @@ export async function registerRoutes(
     res.sendStatus(204);
   });
 
+  // --- FORCE DATABASE SETUP (Add this temporarily) ---
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        sender_id INTEGER REFERENCES users(id),
+        receiver_id INTEGER REFERENCES users(id),
+        rental_id INTEGER REFERENCES rentals(id),
+        content TEXT NOT NULL,
+        sent_at TIMESTAMP DEFAULT NOW(),
+        read BOOLEAN DEFAULT FALSE
+      );
+    `);
+    console.log("Messages table verified!");
+  } catch (err) {
+    console.error("Error creating messages table:", err);
+  }
+  // --------------------------------------------------
+
+  // --- MESSAGING SYSTEM ROUTES ---
+  // ... (rest of your message routes are below)
+  
   // --- MESSAGING SYSTEM ROUTES (MOVED INSIDE) ---
 
   // 1. Send a Message
