@@ -20,7 +20,10 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/auth" component={AuthPage} />
       <Route path="/about" component={About} />
+      <Route path="/items/:id" component={ItemDetail} />
+      <Route path="/inbox" component={InboxPage} />
       <Route path="/login">
         {() => <AuthPage mode="login" />}
       </Route>
