@@ -15,18 +15,55 @@ export async function registerRoutes(
   // Auth
   setupAuth(app);
 
+  // --- AUTOMATIC DATABASE SCHEMA UPDATES ---
+  // This runs on startup to ensure your database has all the new columns we added.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        sender_id INTEGER REFERENCES users(id),
+        receiver_id INTEGER REFERENCES users(id),
+        rental_id INTEGER REFERENCES rentals(id),
+        content TEXT NOT NULL,
+        sent_at TIMESTAMP DEFAULT NOW(),
+        read BOOLEAN DEFAULT FALSE
+      );
+      
+      -- Add Profile & Payment Columns if they are missing
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS venmo_handle TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS cashapp_tag TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS location TEXT;
+    `);
+    console.log("Database schema verified (Messages & Payment columns ready).");
+  } catch (err) {
+    console.error("Error updating schema:", err);
+  }
+  // -----------------------------------------
+
+
   // --- ACCOUNT MANAGEMENT ROUTES ---
 
-  // 1. Update Profile (Name, Email, etc.)
+  // 1. Update Profile (Name, Email, Payment Handles)
   app.patch("/api/user", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
-    const { name, email } = req.body; 
+    // We accept all these fields now
+    const { name, email, bio, location, venmo_handle, cashapp_tag } = req.body; 
 
     try {
+      // COALESCE means "If the new value is null, keep the old value"
       const result = await pool.query(
-        `UPDATE users SET name = $1, email = $2 WHERE id = $3 RETURNING id, username, name, email`,
-        [name, email, userId]
+        `UPDATE users 
+         SET name = COALESCE($1, name), 
+             email = COALESCE($2, email),
+             bio = COALESCE($3, bio),
+             location = COALESCE($4, location),
+             venmo_handle = COALESCE($5, venmo_handle),
+             cashapp_tag = COALESCE($6, cashapp_tag)
+         WHERE id = $7 
+         RETURNING id, username, name, email, bio, location, venmo_handle, cashapp_tag`,
+        [name, email, bio, location, venmo_handle, cashapp_tag, userId]
       );
       res.json(result.rows[0]);
     } catch (error) {
@@ -64,6 +101,7 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to update password" });
     }
   });
+
 
   // --- ITEM ROUTES ---
 
@@ -142,6 +180,7 @@ export async function registerRoutes(
     }
   });
 
+
   // --- FAVORITE ROUTES ---
 
   app.post(api.favorites.toggle.path, async (req, res) => {
@@ -155,6 +194,7 @@ export async function registerRoutes(
     const favorites = await storage.getFavorites((req.user as any).id);
     res.json(favorites);
   });
+
 
   // --- RENTAL ROUTES ---
 
@@ -236,23 +276,6 @@ export async function registerRoutes(
     res.sendStatus(204);
   });
 
-  // --- FORCE DATABASE SETUP (Ensures messaging works) ---
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id SERIAL PRIMARY KEY,
-        sender_id INTEGER REFERENCES users(id),
-        receiver_id INTEGER REFERENCES users(id),
-        rental_id INTEGER REFERENCES rentals(id),
-        content TEXT NOT NULL,
-        sent_at TIMESTAMP DEFAULT NOW(),
-        read BOOLEAN DEFAULT FALSE
-      );
-    `);
-    console.log("Messages table verified!");
-  } catch (err) {
-    console.error("Error creating messages table:", err);
-  }
 
   // --- MESSAGING SYSTEM ROUTES ---
 
@@ -335,7 +358,7 @@ export async function registerRoutes(
     }
   });
 
-  // Seed Data
+  // Seed Data (Safe to run every time)
   try {
     await seedDatabase();
   } catch (e) {
@@ -345,7 +368,7 @@ export async function registerRoutes(
   return httpServer;
 }
 
-// Helper function outside (Correct placement)
+// Helper function
 async function seedDatabase() {
   const existingItems = await storage.getItems();
   if (existingItems.length > 0) return;
