@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Send, Tag } from "lucide-react";
+import { Loader2, Send, Tag, Calendar } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
 interface MessageDialogProps {
@@ -34,7 +34,11 @@ export function MessageDialog({ receiverId, trigger, item }: MessageDialogProps)
   const [open, setOpen] = useState(false);
   const [content, setContent] = useState("");
   const [isOffer, setIsOffer] = useState(false);
+  
+  // Offer State
   const [offerPrice, setOfferPrice] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -46,15 +50,16 @@ export function MessageDialog({ receiverId, trigger, item }: MessageDialogProps)
         content,
       };
 
-      // FIX: Always attach item ID if we are on an item page
+      // Always attach item ID if we are on an item page (context)
       if (item) {
         payload.itemId = item.id;
       }
 
-      // Only attach price if they actually checked the box
-      if (isOffer && item && offerPrice) {
-        // Convert input (dollars) to cents
+      // If making an offer, attach the specific rental details
+      if (isOffer && item && offerPrice && startDate && endDate) {
         payload.offerPrice = Math.round(parseFloat(offerPrice) * 100);
+        payload.startDate = new Date(startDate).toISOString();
+        payload.endDate = new Date(endDate).toISOString();
       }
 
       await apiRequest("POST", "/api/messages", payload);
@@ -65,6 +70,8 @@ export function MessageDialog({ receiverId, trigger, item }: MessageDialogProps)
       setContent("");
       setIsOffer(false);
       setOfferPrice("");
+      setStartDate("");
+      setEndDate("");
       queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
     },
     onError: () => {
@@ -78,6 +85,13 @@ export function MessageDialog({ receiverId, trigger, item }: MessageDialogProps)
     sendMessage.mutate();
   };
 
+  // Helper to calculate total days for preview
+  const days = startDate && endDate 
+    ? Math.max(0, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
+
+  const totalCost = offerPrice ? parseFloat(offerPrice) * 100 * days : 0;
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
@@ -89,7 +103,7 @@ export function MessageDialog({ receiverId, trigger, item }: MessageDialogProps)
           </DialogDescription>
         </DialogHeader>
 
-        {/* Show context in the modal */}
+        {/* Item Context (If coming from an item page) */}
         {item && (
           <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg mb-4 border">
             <img 
@@ -111,16 +125,16 @@ export function MessageDialog({ receiverId, trigger, item }: MessageDialogProps)
             <Label htmlFor="message">Message</Label>
             <Textarea
               id="message"
-              placeholder={item ? `Hi, is this ${item.title} still available?` : "Type your message..."}
+              placeholder={item ? `Hi, I'm interested in renting this for next weekend...` : "Type your message..."}
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              className="min-h-[100px]"
+              className="min-h-[80px]"
             />
           </div>
 
           {/* MAKE OFFER TOGGLE */}
           {item && (
-            <div className="space-y-4 pt-2 border-t">
+            <div className="space-y-4 pt-4 border-t">
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   id="offer" 
@@ -129,34 +143,68 @@ export function MessageDialog({ receiverId, trigger, item }: MessageDialogProps)
                 />
                 <Label htmlFor="offer" className="font-medium cursor-pointer flex items-center gap-2">
                   <Tag className="h-4 w-4 text-green-600" />
-                  Make a Price Offer
+                  Make a Booking Request
                 </Label>
               </div>
 
               {isOffer && (
-                <div className="pl-6 animate-in slide-in-from-top-2">
-                  <Label htmlFor="price" className="text-xs text-muted-foreground">Your Offer (per day)</Label>
-                  <div className="relative mt-1">
-                    <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-                    <Input
-                      id="price"
-                      type="number"
-                      placeholder={String(item.pricePerDay / 100)}
-                      className="pl-7"
-                      value={offerPrice}
-                      onChange={(e) => setOfferPrice(e.target.value)}
-                    />
+                <div className="grid gap-4 p-4 bg-slate-50 rounded-lg border animate-in slide-in-from-top-2">
+                  
+                  {/* Date Pickers */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Start Date</Label>
+                      <Input 
+                        type="date" 
+                        value={startDate} 
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="bg-white" 
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">End Date</Label>
+                      <Input 
+                        type="date" 
+                        value={endDate} 
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="bg-white" 
+                      />
+                    </div>
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Original price: {formatCurrency(item.pricePerDay)}
-                  </p>
+
+                  {/* Price Input */}
+                  <div className="space-y-1">
+                    <Label className="text-xs">Offer Price (Per Day)</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
+                      <Input
+                        id="price"
+                        type="number"
+                        placeholder={String(item.pricePerDay / 100)}
+                        className="pl-7 bg-white"
+                        value={offerPrice}
+                        onChange={(e) => setOfferPrice(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Total Calculation */}
+                  {days > 0 && offerPrice && (
+                    <div className="text-center text-sm font-semibold text-primary pt-2 border-t mt-2 flex justify-between items-center">
+                      <span>Total ({days} days):</span>
+                      <span className="text-lg">{formatCurrency(totalCost)}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          <DialogFooter className="pt-4">
-            <Button type="submit" disabled={sendMessage.isPending || (isOffer && !offerPrice)}>
+          <DialogFooter className="pt-2">
+            <Button 
+              type="submit" 
+              disabled={sendMessage.isPending || (isOffer && (!offerPrice || !startDate || !endDate))}
+            >
               {sendMessage.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -165,7 +213,7 @@ export function MessageDialog({ receiverId, trigger, item }: MessageDialogProps)
               ) : (
                 <>
                   <Send className="mr-2 h-4 w-4" />
-                  {isOffer ? "Send Offer" : "Send Message"}
+                  {isOffer ? "Send Request" : "Send Message"}
                 </>
               )}
             </Button>
