@@ -1,7 +1,7 @@
 import { Navbar } from "@/components/layout/Navbar";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertItemSchema, type InsertItem } from "@shared/schema";
+import { insertItemSchema } from "@shared/schema";
 import { z } from "zod";
 import { useCreateItem, useItem, useUpdateItem } from "@/hooks/use-items";
 import { useAuth } from "@/hooks/use-auth";
@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { useEffect } from "react";
+import { ImageUpload } from "@/components/ImageUpload"; // <--- NEW IMPORT
 
 // Form schema with validation
 const formSchema = insertItemSchema.omit({ ownerId: true, isAvailable: true }).extend({
@@ -239,32 +240,23 @@ export default function PostItem() {
                 )}
               />
               
+              {/* --- IMAGE UPLOAD FIELD (REPLACES TEXT INPUT) --- */}
               <FormField
                 control={form.control}
                 name="imageUrl"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Image URL</FormLabel>
+                    <FormLabel>Item Photo</FormLabel>
                     <FormControl>
-                      <div className="flex gap-2">
-                        <Input placeholder="https://example.com/image.jpg" {...field} />
-                      </div>
+                       {/* The new component handles upload & preview */}
+                      <ImageUpload 
+                        value={field.value} 
+                        onChange={field.onChange} 
+                      />
                     </FormControl>
                     <FormDescription>
-                      Paste a URL for your item image.
+                      Upload a clear photo of your item (JPG/PNG).
                     </FormDescription>
-                    {field.value && (
-                      <div className="mt-4 rounded-lg overflow-hidden h-48 border border-border bg-secondary/20 flex items-center justify-center">
-                        <img 
-                          src={field.value} 
-                          alt="Preview" 
-                          className="h-full object-contain"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = "https://placehold.co/400x300?text=Invalid+URL";
-                          }}
-                        />
-                      </div>
-                    )}
                     <FormMessage />
                   </FormItem>
                 )}
