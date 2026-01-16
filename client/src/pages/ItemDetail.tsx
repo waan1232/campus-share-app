@@ -13,6 +13,8 @@ import { format, addDays, isWithinInterval } from "date-fns";
 import { useState } from "react";
 import { DateRange } from "react-day-picker";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MessageDialog } from "@/components/MessageDialog";
+import { useAuth } from "@/hooks/use-auth"; // Ensure you have access to the user
 
 export default function ItemDetail() {
   const { id } = useParams();
