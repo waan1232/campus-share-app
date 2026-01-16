@@ -100,7 +100,40 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to update profile" });
     }
   });
+// --- EARNINGS ROUTE ---
+  app.get("/api/earnings", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    const userId = (req.user as any).id;
 
+    try {
+      // Find all rentals for items OWNED by this user
+      // We join Rentals -> Items to check ownership
+      const result = await pool.query(
+        `SELECT r.*, i.title, i.price_per_day, i.image_url,
+                u.username as renter_name
+         FROM rentals r
+         JOIN items i ON r.item_id = i.id
+         JOIN users u ON r.renter_id = u.id
+         WHERE i.owner_id = $1
+         ORDER BY r.start_date DESC`,
+        [userId]
+      );
+
+      // Calculate totals in JavaScript for simplicity
+      const rentals = result.rows.map(row => {
+        const days = Math.ceil((new Date(row.end_date).getTime() - new Date(row.start_date).getTime()) / (1000 * 60 * 60 * 24));
+        const total = (row.price_per_day * days); // in cents
+        return { ...row, total_earnings: total, days };
+      });
+
+      const totalLifetime = rentals.reduce((acc, curr) => acc + curr.total_earnings, 0);
+
+      res.json({ total: totalLifetime, history: rentals });
+    } catch (error) {
+      console.error("Earnings error:", error);
+      res.status(500).json({ error: "Failed to fetch earnings" });
+    }
+  });
   app.patch("/api/user/password", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
