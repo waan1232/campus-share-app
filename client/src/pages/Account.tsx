@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { 
   User, 
@@ -19,10 +18,10 @@ import {
   LogOut, 
   ArrowLeft,
   Camera,
-  LayoutDashboard,
-  Zap
+  Package // Changed icon to Package for listings
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Item } from "@shared/schema"; // Import Item type if available, or define locally
 
 export default function AccountPage() {
   const { user, logoutMutation } = useAuth();
@@ -36,6 +35,11 @@ export default function AccountPage() {
   const [email, setEmail] = useState(user?.email || "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  // FETCH REAL DATA: Get My Items
+  const { data: myItems } = useQuery<Item[]>({
+    queryKey: ["/api/my-items"],
+  });
 
   // Update Profile Mutation
   const updateProfileMutation = useMutation({
@@ -91,7 +95,7 @@ export default function AccountPage() {
       <div className="container max-w-5xl -mt-20 relative z-20">
         <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-8">
           
-          {/* --- LEFT COLUMN: ID CARD --- */}
+          {/* --- LEFT COLUMN: ID CARD (REAL DATA) --- */}
           <div className="space-y-6">
             <Card className="overflow-hidden border-none shadow-xl">
               <CardContent className="p-6 flex flex-col items-center text-center pt-10 relative">
@@ -115,34 +119,20 @@ export default function AccountPage() {
                   <ShieldCheck className="h-4 w-4" /> Verified Student
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 w-full mt-8 pt-6 border-t">
-                  <div>
-                    <p className="text-2xl font-bold text-primary">4.9</p>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Rating</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-primary">12</p>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Rentals</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-gray-900 to-gray-800 text-white border-none shadow-xl">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-yellow-500/20 rounded-lg text-yellow-400">
-                    <Zap className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="font-bold">Pro Status</p>
-                    <p className="text-xs text-gray-400">Level 1 Lender</p>
+                <div className="grid grid-cols-1 gap-4 w-full mt-8 pt-6 border-t">
+                  <div className="flex flex-col items-center">
+                    <div className="flex items-center gap-2 text-2xl font-bold text-primary">
+                      <Package className="h-5 w-5" />
+                      {/* REAL DATA: Shows 0 if loading, or actual count */}
+                      {myItems ? myItems.length : "-"}
+                    </div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Active Listings</p>
                   </div>
                 </div>
-                <div className="w-full bg-gray-700 h-2 rounded-full overflow-hidden">
-                  <div className="bg-yellow-400 h-full w-[70%]" />
+                
+                <div className="mt-6 text-xs text-muted-foreground">
+                  Member since {new Date().getFullYear()} {/* You could use user.createdAt if available */}
                 </div>
-                <p className="text-xs text-gray-400 mt-2">3 more rentals to reach Level 2</p>
               </CardContent>
             </Card>
           </div>
