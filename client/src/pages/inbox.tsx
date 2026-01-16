@@ -11,7 +11,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { formatCurrency, cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  Loader2, Send, Search, MessageSquareOff, Trash2, Check, CheckCheck, ArrowLeft, X, CheckCircle2
+  Loader2, Send, Search, MessageSquareOff, Trash2, Check, CheckCheck, 
+  ArrowLeft, X, CheckCircle2, CalendarDays, ExternalLink
 } from "lucide-react";
 
 interface Message {
@@ -28,6 +29,8 @@ interface Message {
   item_image?: string;
   offer_price?: number;
   offer_status?: 'none' | 'pending' | 'accepted' | 'rejected';
+  start_date?: string;
+  end_date?: string;
 }
 
 interface Conversation {
@@ -52,16 +55,12 @@ export default function InboxPage() {
   });
 
   const markReadMutation = useMutation({
-    mutationFn: async (senderId: number) => {
-      await apiRequest("POST", "/api/messages/mark-read", { senderId });
-    },
+    mutationFn: async (senderId: number) => apiRequest("POST", "/api/messages/mark-read", { senderId }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/messages"] }),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (otherUserId: number) => {
-      await apiRequest("DELETE", `/api/messages/${otherUserId}`);
-    },
+    mutationFn: async (otherUserId: number) => apiRequest("DELETE", `/api/messages/${otherUserId}`),
     onSuccess: () => {
       toast({ title: "Conversation deleted" });
       setSelectedUserId(null);
@@ -73,8 +72,9 @@ export default function InboxPage() {
     mutationFn: async ({ msgId, status }: { msgId: number, status: 'accepted' | 'rejected' }) => {
       await apiRequest("PATCH", `/api/messages/${msgId}/offer`, { status });
     },
-    onSuccess: () => {
-      toast({ title: "Offer updated!" });
+    onSuccess: (_, variables) => {
+      const text = variables.status === 'accepted' ? "Offer Accepted! Rental created." : "Offer Declined.";
+      toast({ title: text });
       queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
     },
   });
@@ -115,7 +115,7 @@ export default function InboxPage() {
       .map(group => {
         group.messages.sort((a, b) => new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime());
         const lastMsg = group.messages[group.messages.length - 1];
-        group.lastMessage = lastMsg.offer_price ? `Offer: ${formatCurrency(lastMsg.offer_price)}` : lastMsg.content;
+        group.lastMessage = lastMsg.offer_price ? `Rental Request: ${formatCurrency(lastMsg.offer_price)}` : lastMsg.content;
         group.timestamp = lastMsg.sent_at;
         return group;
       })
@@ -147,29 +147,24 @@ export default function InboxPage() {
             </div>
           </div>
           <ScrollArea className="flex-1">
-            {conversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 text-muted-foreground p-4 text-center">
-                <MessageSquareOff className="h-8 w-8 mb-2 opacity-50" />
-                <p className="text-sm">No conversations yet.</p>
-              </div>
-            ) : (
+            {conversations.length === 0 ? <div className="p-8 text-center text-muted-foreground">No conversations yet.</div> : (
               <div className="flex flex-col p-2 gap-1">
                 {conversations.map((chat) => (
-                  <div key={chat.userId} onClick={() => setSelectedUserId(chat.userId)} className={cn("group flex items-center gap-3 p-3 rounded-lg text-left transition-all hover:bg-muted/50 cursor-pointer relative", selectedUserId === chat.userId && "bg-primary/10 hover:bg-primary/15")}>
+                  <div key={chat.userId} onClick={() => setSelectedUserId(chat.userId)} className={cn("group flex items-center gap-3 p-3 rounded-lg text-left transition-all hover:bg-muted/50 cursor-pointer relative", selectedUserId === chat.userId && "bg-primary/10")}>
                     <Avatar className="h-10 w-10 border border-border">
                       <AvatarFallback className={cn(selectedUserId === chat.userId ? "bg-primary text-primary-foreground" : "bg-muted")}>{chat.userName.charAt(0)}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 overflow-hidden">
                       <div className="flex justify-between items-center mb-0.5">
-                        <span className={cn("text-sm truncate", chat.unreadCount > 0 ? "font-bold text-foreground" : "font-semibold")}>{chat.userName}</span>
+                        <span className="font-semibold text-sm truncate">{chat.userName}</span>
                         <span className="text-[10px] text-muted-foreground">{new Date(chat.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <p className={cn("text-xs truncate max-w-[180px]", chat.unreadCount > 0 ? "font-medium text-foreground" : "text-muted-foreground opacity-80")}>{chat.lastMessage}</p>
+                        <p className={cn("text-xs truncate max-w-[180px]", chat.unreadCount > 0 ? "font-bold text-foreground" : "text-muted-foreground")}>{chat.lastMessage}</p>
                         {chat.unreadCount > 0 && <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] text-white">{chat.unreadCount}</span>}
                       </div>
                     </div>
-                    <Button variant="ghost" size="icon" className="absolute right-2 top-8 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100 hover:text-red-600" onClick={(e) => { e.stopPropagation(); if(confirm("Delete conversation?")) deleteMutation.mutate(chat.userId); }}>
+                    <Button variant="ghost" size="icon" className="absolute right-2 top-8 h-6 w-6 opacity-0 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); if(confirm("Delete conversation?")) deleteMutation.mutate(chat.userId); }}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -188,74 +183,119 @@ export default function InboxPage() {
                 <Avatar className="h-9 w-9 border"><AvatarFallback className="bg-primary/10 text-primary">{activeConversation.userName.charAt(0)}</AvatarFallback></Avatar>
                 <div><h3 className="font-bold text-sm">{activeConversation.userName}</h3><p className="text-xs text-green-600 font-medium">Online</p></div>
               </div>
+              
               <ScrollArea className="flex-1 p-4 bg-slate-50/50">
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-6">
                   {activeConversation.messages.map((msg) => {
                     const isMe = msg.sender_id === user?.id;
+                    
+                    // Logic to calculate days and total
+                    const days = msg.start_date && msg.end_date 
+                      ? Math.ceil((new Date(msg.end_date).getTime() - new Date(msg.start_date).getTime()) / (1000 * 60 * 60 * 24)) 
+                      : 0;
+                    const totalCost = (msg.offer_price || 0) * days;
+
                     return (
-                      <div key={msg.id} className={cn("flex w-max max-w-[85%] flex-col gap-1 px-4 py-2.5 text-sm shadow-sm", isMe ? "ml-auto bg-primary text-primary-foreground rounded-2xl rounded-tr-sm" : "bg-white border border-border/50 rounded-2xl rounded-tl-sm")}>
+                      <div key={msg.id} className={cn("flex w-full flex-col gap-1", isMe ? "items-end" : "items-start")}>
                         
-                        {/* --- ITEM CONTEXT CARD (SHOW IF ITEM OR OFFER EXISTS) --- */}
+                        {/* --- THE OFFER CARD (Fixed Styling) --- */}
                         {(msg.item_id || msg.offer_price) && (
-                           <div className={cn("rounded-lg p-3 mb-2 min-w-[200px]", isMe ? "bg-white/10" : "bg-secondary/50")}>
-                              {/* Item Header */}
-                              {msg.item_id && (
-                                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10">
-                                   {msg.item_image && <img src={msg.item_image} className="w-8 h-8 rounded object-cover" />}
-                                   <span className="text-xs font-semibold opacity-90">{msg.item_title || "Referred Item"}</span>
-                                </div>
-                              )}
-                              
-                              {/* Offer Details (Only show if there is an offer) */}
-                              {msg.offer_price ? (
-                                <>
-                                  <div className="flex items-baseline gap-1 mb-2">
-                                    <span className="text-lg font-bold">{formatCurrency(msg.offer_price)}</span>
-                                    <span className="text-xs opacity-70">/day</span>
+                          <div className={cn(
+                            "mb-1 w-[280px] rounded-xl overflow-hidden shadow-sm border",
+                            "bg-white" // Always white background for the card for cleanliness
+                          )}>
+                            {/* Header / Title Link */}
+                            {msg.item_id && (
+                              <Link href={`/items/${msg.item_id}`}>
+                                <div className="flex items-center gap-3 p-3 border-b bg-gray-50/50 cursor-pointer hover:bg-gray-100 transition-colors">
+                                  {msg.item_image ? (
+                                    <img src={msg.item_image} className="w-10 h-10 rounded-md object-cover border" />
+                                  ) : (
+                                    <div className="w-10 h-10 bg-gray-200 rounded-md" />
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold truncate text-primary flex items-center gap-1">
+                                      {msg.item_title} <ExternalLink className="h-3 w-3 opacity-50" />
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">View Item</p>
                                   </div>
-                                  
-                                  {/* Status Badge */}
+                                </div>
+                              </Link>
+                            )}
+
+                            {/* Offer Details Body */}
+                            {msg.offer_price ? (
+                              <div className="p-3 space-y-3">
+                                <div className="flex justify-between items-baseline">
+                                  <span className="text-xs text-muted-foreground">Offer Price</span>
+                                  <span className="font-semibold text-sm">{formatCurrency(msg.offer_price)}<span className="text-xs font-normal text-muted-foreground">/day</span></span>
+                                </div>
+                                
+                                {days > 0 && (
+                                  <>
+                                    <div className="flex items-start gap-2 text-xs text-muted-foreground bg-slate-50 p-2 rounded">
+                                      <CalendarDays className="h-4 w-4 mt-0.5" />
+                                      <div>
+                                        <p>{new Date(msg.start_date!).toLocaleDateString()} - {new Date(msg.end_date!).toLocaleDateString()}</p>
+                                        <p className="font-medium text-black">{days} Days Total</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-2 border-t">
+                                      <span className="font-bold text-sm">Total Payout</span>
+                                      <span className="font-bold text-lg text-primary">{formatCurrency(totalCost)}</span>
+                                    </div>
+                                  </>
+                                )}
+
+                                {/* Status Bar */}
+                                <div className="pt-2">
                                   {msg.offer_status === 'accepted' && (
-                                    <div className="flex items-center gap-1 text-green-500 bg-white/90 px-2 py-1 rounded text-xs font-bold w-fit">
-                                      <CheckCircle2 className="h-3 w-3" /> Offer Accepted
+                                    <div className="w-full py-2 bg-green-100 text-green-700 rounded text-center text-xs font-bold flex items-center justify-center gap-2">
+                                      <CheckCircle2 className="h-4 w-4" /> ACCEPTED
                                     </div>
                                   )}
                                   {msg.offer_status === 'rejected' && (
-                                    <div className="flex items-center gap-1 text-red-500 bg-white/90 px-2 py-1 rounded text-xs font-bold w-fit">
-                                      <X className="h-3 w-3" /> Offer Declined
+                                    <div className="w-full py-2 bg-red-100 text-red-700 rounded text-center text-xs font-bold flex items-center justify-center gap-2">
+                                      <X className="h-4 w-4" /> DECLINED
                                     </div>
                                   )}
-                                  {msg.offer_status === 'pending' && (
-                                    <div className="flex items-center gap-1 text-yellow-500 bg-white/90 px-2 py-1 rounded text-xs font-bold w-fit">
-                                      Pending Response
+                                  {msg.offer_status === 'pending' && !isMe && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <Button size="sm" className="w-full bg-green-600 hover:bg-green-700 text-white h-8" onClick={() => updateOfferMutation.mutate({ msgId: msg.id, status: 'accepted' })}>Accept</Button>
+                                      <Button size="sm" variant="outline" className="w-full border-red-200 text-red-600 hover:bg-red-50 h-8" onClick={() => updateOfferMutation.mutate({ msgId: msg.id, status: 'rejected' })}>Decline</Button>
                                     </div>
                                   )}
-
-                                  {/* Action Buttons (Only for Recipient) */}
-                                  {!isMe && msg.offer_status === 'pending' && (
-                                    <div className="flex gap-2 mt-2 pt-2 border-t border-border/20">
-                                      <Button size="sm" variant="default" className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={() => updateOfferMutation.mutate({ msgId: msg.id, status: 'accepted' })}>Accept</Button>
-                                      <Button size="sm" variant="ghost" className="h-7 text-xs hover:bg-red-100 hover:text-red-600" onClick={() => updateOfferMutation.mutate({ msgId: msg.id, status: 'rejected' })}>Decline</Button>
+                                  {msg.offer_status === 'pending' && isMe && (
+                                    <div className="w-full py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded text-center text-xs font-medium">
+                                      Waiting for response...
                                     </div>
                                   )}
-                                </>
-                              ) : (
-                                /* If it's just a linked item with no offer */
-                                <p className="text-[10px] opacity-70 italic">Mentioned this item</p>
-                              )}
-                           </div>
+                                </div>
+                              </div>
+                            ) : (
+                                <div className="p-2 text-center text-xs text-muted-foreground italic bg-slate-50">Mentioned this item</div>
+                            )}
+                          </div>
                         )}
 
-                        {msg.content}
-                        <div className={cn("flex items-center gap-1 text-[10px] self-end opacity-70", isMe ? "text-primary-foreground/80" : "text-muted-foreground")}>
-                          <span>{new Date(msg.sent_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
-                          {isMe && (msg.read ? <CheckCheck className="h-3 w-3" /> : <Check className="h-3 w-3" />)}
+                        {/* --- THE TEXT MESSAGE BUBBLE --- */}
+                        <div className={cn(
+                          "px-4 py-2 text-sm shadow-sm max-w-[85%]",
+                          isMe ? "bg-primary text-primary-foreground rounded-2xl rounded-tr-sm" : "bg-white border border-border/50 rounded-2xl rounded-tl-sm"
+                        )}>
+                          {msg.content}
+                          <div className={cn("flex items-center gap-1 text-[10px] justify-end opacity-70 mt-1", isMe ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                            <span>{new Date(msg.sent_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+                            {isMe && (msg.read ? <CheckCheck className="h-3 w-3" /> : <Check className="h-3 w-3" />)}
+                          </div>
                         </div>
+
                       </div>
                     );
                   })}
                 </div>
               </ScrollArea>
+
               <div className="p-4 bg-background border-t">
                 <form onSubmit={(e) => { e.preventDefault(); sendMessageMutation.mutate(); }} className="flex gap-2">
                   <Input placeholder="Type a message..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} className="flex-1 rounded-full bg-muted/30 border-muted-foreground/20" />
