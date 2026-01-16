@@ -14,6 +14,7 @@ import ItemDetail from "@/pages/ItemDetail";
 import PostItem from "@/pages/PostItem";
 import Dashboard from "@/pages/Dashboard";
 import About from "@/pages/About";
+import InboxPage from "@/pages/inbox";
 
 function Router() {
   return (
