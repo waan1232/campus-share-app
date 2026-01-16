@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter"; // Import useLocation
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,37 +19,52 @@ import {
   ArrowLeft,
   Camera,
   Package,
-  Wallet
+  Wallet,
+  Loader2 // Import Loader
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Item } from "@shared/schema";
 
 export default function AccountPage() {
-  const { user, logoutMutation } = useAuth();
+  const { user, logoutMutation, isLoading } = useAuth(); // Get isLoading too
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation(); // Location hook for redirect
   
   const [activeTab, setActiveTab] = useState("profile");
   
   // Form States (Profile)
-  const [name, setName] = useState(user?.name || "");
-  const [email, setEmail] = useState(user?.email || "");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   
   // Form States (Payouts)
-  // We use (user as any) here to avoid TypeScript errors if you haven't updated shared/schema.ts yet
-  const [venmo, setVenmo] = useState((user as any)?.venmo_handle || "");
-  const [cashapp, setCashapp] = useState((user as any)?.cashapp_tag || "");
+  const [venmo, setVenmo] = useState("");
+  const [cashapp, setCashapp] = useState("");
 
   // Form States (Security)
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  // Populate state when user loads
+  useEffect(() => {
+    if (user) {
+      setName(user.name);
+      setEmail(user.email);
+      setVenmo((user as any).venmo_handle || "");
+      setCashapp((user as any).cashapp_tag || "");
+    } else if (!isLoading) {
+      // FIX: If not loading and no user, Redirect to Home
+      setLocation("/");
+    }
+  }, [user, isLoading, setLocation]);
+
   // FETCH REAL DATA: Get My Items count
   const { data: myItems } = useQuery<Item[]>({
     queryKey: ["/api/my-items"],
+    enabled: !!user, // Only fetch if logged in
   });
 
-  // Update Profile Mutation (Handles Name, Email, Venmo, CashApp)
+  // Update Profile Mutation
   const updateProfileMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await apiRequest("PATCH", "/api/user", data);
@@ -76,7 +91,14 @@ export default function AccountPage() {
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" })
   });
 
-  if (!user) return null;
+  // If loading, show spinner. If no user (and redirecting), show nothing.
+  if (isLoading || !user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   const tabs = [
     { id: "profile", label: "Edit Profile", icon: User },
@@ -102,7 +124,7 @@ export default function AccountPage() {
       <div className="container max-w-5xl -mt-20 relative z-20">
         <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-8">
           
-          {/* --- LEFT COLUMN: ID CARD (REAL DATA) --- */}
+          {/* --- LEFT COLUMN: ID CARD --- */}
           <div className="space-y-6">
             <Card className="overflow-hidden border-none shadow-xl">
               <CardContent className="p-6 flex flex-col items-center text-center pt-10 relative">
@@ -130,7 +152,6 @@ export default function AccountPage() {
                   <div className="flex flex-col items-center">
                     <div className="flex items-center gap-2 text-2xl font-bold text-primary">
                       <Package className="h-5 w-5" />
-                      {/* REAL DATA: Shows active listings count */}
                       {myItems ? myItems.length : "-"}
                     </div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Active Listings</p>
@@ -206,7 +227,7 @@ export default function AccountPage() {
               </Card>
             )}
 
-             {/* --- TAB CONTENT: PAYOUT METHODS (New) --- */}
+             {/* --- TAB CONTENT: PAYOUT METHODS --- */}
              {activeTab === "billing" && (
               <Card>
                 <CardHeader>
@@ -319,7 +340,7 @@ export default function AccountPage() {
               </Card>
             )}
 
-            {/* DANGER ZONE (Always Visible at bottom of right column) */}
+            {/* DANGER ZONE */}
             <Card className="border-red-100 bg-red-50/50">
               <CardContent className="p-6 flex items-center justify-between">
                 <div>
