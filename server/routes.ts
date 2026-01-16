@@ -6,6 +6,10 @@ import { setupAuth } from "./auth";
 import { z } from "zod";
 import { pool } from "./db";
 import { containsBannedWords } from "@shared/utils";
+import multer from "multer";
+import path from "path";
+import express from "express";
+import fs from "fs";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -15,8 +19,41 @@ export async function registerRoutes(
   // Auth
   setupAuth(app);
 
-  // --- AUTOMATIC DATABASE SCHEMA UPDATES ---
-  // This runs on startup to ensure your database has all the new columns we added.
+  // --- 1. SETUP FILE STORAGE (MULTER) ---
+  // Ensure the uploads directory exists
+  const uploadDir = path.join(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir);
+  }
+
+  // Configure Multer to save files
+  const storageConfig = multer.diskStorage({
+    destination: function (req, file, cb) {
+      cb(null, uploadDir);
+    },
+    filename: function (req, file, cb) {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const ext = path.extname(file.originalname);
+      cb(null, 'image-' + uniqueSuffix + ext);
+    }
+  });
+
+  const upload = multer({ storage: storageConfig });
+
+  // Serve the files so the browser can see them
+  app.use('/uploads', express.static(uploadDir));
+
+  // Upload Route
+  app.post("/api/upload", upload.single('image'), (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+    const imageUrl = `/uploads/${req.file.filename}`;
+    res.json({ imageUrl });
+  });
+
+
+  // --- 2. AUTOMATIC DATABASE SCHEMA UPDATES ---
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -35,24 +72,21 @@ export async function registerRoutes(
       ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS location TEXT;
     `);
-    console.log("Database schema verified (Messages & Payment columns ready).");
+    console.log("Database schema verified (Messages, Payment & Images ready).");
   } catch (err) {
     console.error("Error updating schema:", err);
   }
-  // -----------------------------------------
 
 
-  // --- ACCOUNT MANAGEMENT ROUTES ---
+  // --- 3. ACCOUNT MANAGEMENT ROUTES ---
 
-  // 1. Update Profile (Name, Email, Payment Handles)
+  // Update Profile (Name, Email, Payment Handles)
   app.patch("/api/user", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
-    // We accept all these fields now
     const { name, email, bio, location, venmo_handle, cashapp_tag } = req.body; 
 
     try {
-      // COALESCE means "If the new value is null, keep the old value"
       const result = await pool.query(
         `UPDATE users 
          SET name = COALESCE($1, name), 
@@ -72,7 +106,7 @@ export async function registerRoutes(
     }
   });
 
-  // 2. Change Password
+  // Change Password
   app.patch("/api/user/password", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
@@ -103,7 +137,7 @@ export async function registerRoutes(
   });
 
 
-  // --- ITEM ROUTES ---
+  // --- 4. ITEM ROUTES ---
 
   app.get(api.items.list.path, async (req, res) => {
     const search = req.query.search as string | undefined;
@@ -181,7 +215,7 @@ export async function registerRoutes(
   });
 
 
-  // --- FAVORITE ROUTES ---
+  // --- 5. FAVORITE ROUTES ---
 
   app.post(api.favorites.toggle.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
@@ -196,7 +230,7 @@ export async function registerRoutes(
   });
 
 
-  // --- RENTAL ROUTES ---
+  // --- 6. RENTAL ROUTES ---
 
   app.post(api.rentals.create.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
@@ -277,9 +311,9 @@ export async function registerRoutes(
   });
 
 
-  // --- MESSAGING SYSTEM ROUTES ---
+  // --- 7. MESSAGING SYSTEM ROUTES ---
 
-  // 1. Send Message
+  // Send Message
   app.post("/api/messages", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     
@@ -299,7 +333,7 @@ export async function registerRoutes(
     }
   });
 
-  // 2. Get Messages (Inbox)
+  // Get Messages (Inbox)
   app.get("/api/messages", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const myId = (req.user as any).id;
@@ -322,7 +356,7 @@ export async function registerRoutes(
     }
   });
 
-  // 3. Mark as Read
+  // Mark as Read
   app.post("/api/messages/mark-read", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const { senderId } = req.body;
@@ -339,7 +373,7 @@ export async function registerRoutes(
     }
   });
 
-  // 4. Delete Conversation
+  // Delete Conversation
   app.delete("/api/messages/:otherUserId", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const otherId = Number(req.params.otherUserId);
@@ -358,7 +392,7 @@ export async function registerRoutes(
     }
   });
 
-  // Seed Data (Safe to run every time)
+  // Seed Data (Runs on startup if DB is empty)
   try {
     await seedDatabase();
   } catch (e) {
