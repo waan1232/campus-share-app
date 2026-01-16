@@ -46,9 +46,14 @@ export function MessageDialog({ receiverId, trigger, item }: MessageDialogProps)
         content,
       };
 
-      if (isOffer && item) {
+      // FIX: Always attach item ID if we are on an item page
+      if (item) {
         payload.itemId = item.id;
-        // Convert user input (e.g. "20") to cents (2000)
+      }
+
+      // Only attach price if they actually checked the box
+      if (isOffer && item && offerPrice) {
+        // Convert input (dollars) to cents
         payload.offerPrice = Math.round(parseFloat(offerPrice) * 100);
       }
 
@@ -84,7 +89,7 @@ export function MessageDialog({ receiverId, trigger, item }: MessageDialogProps)
           </DialogDescription>
         </DialogHeader>
 
-        {/* Item Context (If coming from an item page) */}
+        {/* Show context in the modal */}
         {item && (
           <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg mb-4 border">
             <img 
