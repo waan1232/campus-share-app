@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { Link } from "wouter"; // Import Link for navigation
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -14,7 +15,8 @@ import {
   MessageSquareOff, 
   Trash2, 
   Check, 
-  CheckCheck 
+  CheckCheck,
+  ArrowLeft // Import ArrowLeft icon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -79,7 +81,7 @@ export default function InboxPage() {
     if (selectedUserId) {
       markReadMutation.mutate(selectedUserId);
     }
-  }, [selectedUserId, rawMessages]); // Re-run if new messages arrive while open
+  }, [selectedUserId, rawMessages]);
 
   // 5. Group messages
   const conversations = useMemo(() => {
@@ -105,7 +107,6 @@ export default function InboxPage() {
       
       groups[otherId].messages.push(msg);
       
-      // Count unread messages from THEM
       if (!isMe && !msg.read) {
         groups[otherId].unreadCount++;
       }
@@ -136,11 +137,8 @@ export default function InboxPage() {
     },
   });
 
-  // Auto-select first if none selected
-  if (!selectedUserId && conversations.length > 0) {
-    setSelectedUserId(conversations[0].userId);
-  }
-
+  // Note: I removed the auto-select effect so mobile users start on the list view
+  
   const activeConversation = conversations.find(c => c.userId === selectedUserId);
 
   if (isLoading) {
@@ -152,11 +150,24 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="container py-6 h-[calc(100vh-4rem)]">
-      <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] lg:grid-cols-[350px_1fr] gap-6 h-full">
+    <div className="container py-4 h-[calc(100vh-4rem)] flex flex-col">
+      {/* GLOBAL BACK BUTTON */}
+      <div className="mb-2">
+        <Link href="/dashboard">
+          <Button variant="ghost" className="pl-0 hover:bg-transparent hover:text-primary transition-colors">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] lg:grid-cols-[350px_1fr] gap-6 flex-1 overflow-hidden">
         
-        {/* LEFT SIDEBAR */}
-        <Card className="flex flex-col h-full overflow-hidden border-border/60 shadow-sm">
+        {/* LEFT SIDEBAR - Hidden on mobile if a chat is selected */}
+        <Card className={cn(
+          "flex flex-col h-full overflow-hidden border-border/60 shadow-sm",
+          selectedUserId ? "hidden md:flex" : "flex"
+        )}>
           <div className="p-4 border-b bg-muted/30">
             <h2 className="font-display font-bold text-xl mb-4">Messages</h2>
             <div className="relative">
@@ -209,13 +220,12 @@ export default function InboxPage() {
                       </div>
                     </div>
 
-                    {/* DELETE BUTTON (Visible on Hover) */}
                     <Button
                       variant="ghost"
                       size="icon"
                       className="absolute right-2 top-8 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100 hover:text-red-600"
                       onClick={(e) => {
-                        e.stopPropagation(); // Don't select the chat when deleting
+                        e.stopPropagation();
                         if(confirm("Delete this conversation permanently?")) {
                           deleteMutation.mutate(chat.userId);
                         }
@@ -230,11 +240,24 @@ export default function InboxPage() {
           </ScrollArea>
         </Card>
 
-        {/* RIGHT SIDE: CHAT */}
-        <Card className="flex flex-col h-full overflow-hidden border-border/60 shadow-sm">
+        {/* RIGHT SIDE: CHAT - Hidden on mobile if NO chat is selected */}
+        <Card className={cn(
+          "flex-col h-full overflow-hidden border-border/60 shadow-sm",
+          selectedUserId ? "flex" : "hidden md:flex"
+        )}>
           {activeConversation ? (
             <>
               <div className="p-4 border-b bg-background flex items-center gap-3 shadow-sm z-10">
+                {/* MOBILE BACK BUTTON */}
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="md:hidden mr-1"
+                  onClick={() => setSelectedUserId(null)}
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </Button>
+
                 <Avatar className="h-9 w-9 border">
                   <AvatarFallback className="bg-primary/10 text-primary">
                     {activeConversation.userName.charAt(0).toUpperCase()}
@@ -264,12 +287,11 @@ export default function InboxPage() {
                         <div className={cn("flex items-center gap-1 text-[10px] self-end opacity-70", isMe ? "text-primary-foreground/80" : "text-muted-foreground")}>
                           <span>{new Date(msg.sent_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
                           
-                          {/* READ RECEIPT INDICATOR */}
                           {isMe && (
                             msg.read ? (
-                              <CheckCheck className="h-3 w-3" /> // Double Check (Read)
+                              <CheckCheck className="h-3 w-3" />
                             ) : (
-                              <Check className="h-3 w-3" /> // Single Check (Sent)
+                              <Check className="h-3 w-3" />
                             )
                           )}
                         </div>
