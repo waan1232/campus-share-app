@@ -7,14 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, Calendar as CalendarIcon, ShieldCheck, Loader2, Heart } from "lucide-react";
+import { ArrowLeft, Calendar as CalendarIcon, ShieldCheck, Loader2, Heart, MessageSquare } from "lucide-react";
 import { formatCurrency, cn } from "@/lib/utils";
 import { format, addDays, isWithinInterval } from "date-fns";
 import { useState } from "react";
 import { DateRange } from "react-day-picker";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageDialog } from "@/components/MessageDialog";
-import { useAuth } from "@/hooks/use-auth"; // Ensure you have access to the user
 
 export default function ItemDetail() {
   const { id } = useParams();
@@ -250,21 +249,35 @@ export default function ItemDetail() {
                   )}
                   
                   {user ? (
-                    <Button 
-                      size="lg" 
-                      className="w-full h-12 text-base font-semibold shadow-lg shadow-primary/20" 
-                      onClick={handleRent}
-                      disabled={createRental.isPending || !date?.from || !date?.to}
-                    >
-                      {createRental.isPending ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Processing...
-                        </>
-                      ) : (
-                        "Request to Rent"
-                      )}
-                    </Button>
+                    <div className="flex flex-col gap-3">
+                        {/* Rent Button */}
+                        <Button 
+                        size="lg" 
+                        className="w-full h-12 text-base font-semibold shadow-lg shadow-primary/20" 
+                        onClick={handleRent}
+                        disabled={createRental.isPending || !date?.from || !date?.to}
+                        >
+                        {createRental.isPending ? (
+                            <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Processing...
+                            </>
+                        ) : (
+                            "Request to Rent"
+                        )}
+                        </Button>
+
+                        {/* Message Button */}
+                        <MessageDialog 
+                          receiverId={item.ownerId}
+                          trigger={
+                            <Button variant="outline" className="w-full h-12">
+                                <MessageSquare className="mr-2 h-4 w-4" />
+                                Message Owner
+                            </Button>
+                          }
+                        />
+                    </div>
                   ) : (
                     <Link href="/login">
                       <Button variant="outline" className="w-full h-12">
