@@ -5,7 +5,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/use-auth";
 import NotFound from "@/pages/not-found";
+// 1. Add Import at top
 
+// 2. Add Route in Router function
 // Pages
 import Home from "@/pages/Home";
 import AuthPage from "@/pages/Auth";
@@ -15,6 +17,7 @@ import PostItem from "@/pages/PostItem";
 import Dashboard from "@/pages/Dashboard";
 import About from "@/pages/About";
 import InboxPage from "@/pages/inbox";
+import AccountPage from "@/pages/Account";
 
 function Router() {
   return (
@@ -24,6 +27,7 @@ function Router() {
       <Route path="/about" component={About} />
       <Route path="/items/:id" component={ItemDetail} />
       <Route path="/inbox" component={InboxPage} />
+      <Route path="/account" component={AccountPage} />
       <Route path="/login">
         {() => <AuthPage mode="login" />}
       </Route>
@@ -35,6 +39,7 @@ function Router() {
       <Route path="/items/:id" component={ItemDetail} />
       <Route path="/items/edit/:id" component={PostItem} />
       <Route path="/dashboard" component={Dashboard} />
+      <Route path="/account" component={AccountPage} />
       <Route component={NotFound} />
     </Switch>
   );
