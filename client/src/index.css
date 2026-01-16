@@ -60,18 +60,26 @@
 .text-gradient {
   @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600;
 }
-/* Fix for transparent inputs and dropdowns */
-select, input, textarea, .SelectContent, .SelectItem {
-  background-color: white !important; /* Forces solid white background */
-  color: black !important;           /* Forces solid black text */
-  border: 1px solid #ccc;            /* Adds a subtle border */
+
+/* --- FIX FOR TRANSPARENT DROPDOWNS & INPUTS --- */
+/* This forces a solid background on form elements and dropdown menus */
+select, 
+input, 
+textarea, 
+.SelectContent, 
+.SelectItem, 
+.PopoverContent,
+[role="listbox"],
+[role="dialog"] {
+  background-color: white !important; 
+  color: black !important;
+  border: 1px solid hsl(var(--border)) !important;
+  z-index: 50 !important; /* Ensures it sits on top of other content */
 }
 
-/* Optional: Dark mode override if your app is dark */
-@media (prefers-color-scheme: dark) {
-  select, input, textarea, .SelectContent, .SelectItem {
-    background-color: #1a1a1a !important;
-    color: white !important;
-    border: 1px solid #444;
-  }
+/* Optional: Ensure hover states in dropdowns are visible */
+.SelectItem:hover, 
+.SelectItem:focus {
+  background-color: hsl(var(--muted)) !important;
+  cursor: pointer;
 }
