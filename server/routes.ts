@@ -261,7 +261,41 @@ export async function registerRoutes(
 
   return httpServer;
 }
+// 3. Mark messages as read (Triggered when you open a chat)
+  app.post("/api/messages/mark-read", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    const { senderId } = req.body;
+    const myId = (req.user as any).id;
 
+    try {
+      await pool.query(
+        `UPDATE messages SET read = TRUE WHERE sender_id = $1 AND receiver_id = $2`,
+        [senderId, myId]
+      );
+      res.sendStatus(200);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to mark read" });
+    }
+  });
+
+  // 4. Delete Conversation
+  app.delete("/api/messages/:otherUserId", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    const otherId = Number(req.params.otherUserId);
+    const myId = (req.user as any).id;
+
+    try {
+      await pool.query(
+        `DELETE FROM messages 
+         WHERE (sender_id = $1 AND receiver_id = $2) 
+            OR (sender_id = $2 AND receiver_id = $1)`,
+        [myId, otherId]
+      );
+      res.sendStatus(200);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete conversation" });
+    }
+  });
 // Helper function outside (this is correct)
 async function seedDatabase() {
   const existingItems = await storage.getItems();
