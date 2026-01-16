@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -7,10 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Loader2, Send, Search, MessageSquareOff } from "lucide-react";
+import { 
+  Loader2, 
+  Send, 
+  Search, 
+  MessageSquareOff, 
+  Trash2, 
+  Check, 
+  CheckCheck 
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
-// --- TYPES ---
 interface Message {
   id: number;
   sender_id: number;
@@ -27,29 +35,59 @@ interface Conversation {
   userName: string;
   lastMessage: string;
   timestamp: string;
+  unreadCount: number;
   messages: Message[];
 }
 
 export default function InboxPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [newMessage, setNewMessage] = useState("");
 
-  // 1. Fetch all raw messages
+  // 1. Fetch messages
   const { data: rawMessages, isLoading } = useQuery<Message[]>({
     queryKey: ["/api/messages"],
-    refetchInterval: 3000, // Auto-refresh every 3s for "real-time" feel
+    refetchInterval: 3000,
   });
 
-  // 2. Group messages into "Conversations"
+  // 2. Mark as Read Mutation
+  const markReadMutation = useMutation({
+    mutationFn: async (senderId: number) => {
+      await apiRequest("POST", "/api/messages/mark-read", { senderId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
+    },
+  });
+
+  // 3. Delete Conversation Mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (otherUserId: number) => {
+      await apiRequest("DELETE", `/api/messages/${otherUserId}`);
+    },
+    onSuccess: () => {
+      toast({ title: "Conversation deleted" });
+      setSelectedUserId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
+    },
+  });
+
+  // 4. Auto-mark read when opening chat
+  useEffect(() => {
+    if (selectedUserId) {
+      markReadMutation.mutate(selectedUserId);
+    }
+  }, [selectedUserId, rawMessages]); // Re-run if new messages arrive while open
+
+  // 5. Group messages
   const conversations = useMemo(() => {
     if (!rawMessages || !user) return [];
     
     const groups: Record<number, Conversation> = {};
 
     rawMessages.forEach((msg) => {
-      // Determine who the "other person" is
       const isMe = msg.sender_id === user.id;
       const otherId = isMe ? msg.receiver_id : msg.sender_id;
       const otherName = isMe ? msg.receiver_name : msg.sender_name;
@@ -60,14 +98,19 @@ export default function InboxPage() {
           userName: otherName,
           lastMessage: "",
           timestamp: "",
+          unreadCount: 0,
           messages: [],
         };
       }
       
       groups[otherId].messages.push(msg);
+      
+      // Count unread messages from THEM
+      if (!isMe && !msg.read) {
+        groups[otherId].unreadCount++;
+      }
     });
 
-    // Sort messages inside each group & set preview text
     return Object.values(groups)
       .map(group => {
         group.messages.sort((a, b) => new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime());
@@ -79,7 +122,6 @@ export default function InboxPage() {
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [rawMessages, user]);
 
-  // 3. Send Message Mutation
   const sendMessageMutation = useMutation({
     mutationFn: async () => {
       if (!selectedUserId || !newMessage.trim()) return;
@@ -94,7 +136,7 @@ export default function InboxPage() {
     },
   });
 
-  // Auto-select first conversation on load if none selected
+  // Auto-select first if none selected
   if (!selectedUserId && conversations.length > 0) {
     setSelectedUserId(conversations[0].userId);
   }
@@ -113,7 +155,7 @@ export default function InboxPage() {
     <div className="container py-6 h-[calc(100vh-4rem)]">
       <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] lg:grid-cols-[350px_1fr] gap-6 h-full">
         
-        {/* --- LEFT SIDEBAR: CONVERSATION LIST --- */}
+        {/* LEFT SIDEBAR */}
         <Card className="flex flex-col h-full overflow-hidden border-border/60 shadow-sm">
           <div className="p-4 border-b bg-muted/30">
             <h2 className="font-display font-bold text-xl mb-4">Messages</h2>
@@ -132,42 +174,66 @@ export default function InboxPage() {
             ) : (
               <div className="flex flex-col p-2 gap-1">
                 {conversations.map((chat) => (
-                  <button
+                  <div
                     key={chat.userId}
-                    onClick={() => setSelectedUserId(chat.userId)}
                     className={cn(
-                      "flex items-center gap-3 p-3 rounded-lg text-left transition-all hover:bg-muted/50",
+                      "group flex items-center gap-3 p-3 rounded-lg text-left transition-all hover:bg-muted/50 cursor-pointer relative",
                       selectedUserId === chat.userId && "bg-primary/10 hover:bg-primary/15"
                     )}
+                    onClick={() => setSelectedUserId(chat.userId)}
                   >
                     <Avatar className="h-10 w-10 border border-border">
                       <AvatarFallback className={cn(selectedUserId === chat.userId ? "bg-primary text-primary-foreground" : "bg-muted")}>
                         {chat.userName.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
+                    
                     <div className="flex-1 overflow-hidden">
                       <div className="flex justify-between items-center mb-0.5">
-                        <span className="font-semibold text-sm truncate">{chat.userName}</span>
+                        <span className={cn("text-sm truncate", chat.unreadCount > 0 ? "font-bold text-foreground" : "font-semibold")}>
+                          {chat.userName}
+                        </span>
                         <span className="text-[10px] text-muted-foreground">
                           {new Date(chat.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <p className="text-xs text-muted-foreground truncate font-medium opacity-80">
-                        {chat.lastMessage}
-                      </p>
+                      <div className="flex justify-between items-center">
+                        <p className={cn("text-xs truncate max-w-[180px]", chat.unreadCount > 0 ? "font-medium text-foreground" : "text-muted-foreground opacity-80")}>
+                          {chat.lastMessage}
+                        </p>
+                        {chat.unreadCount > 0 && (
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] text-white">
+                            {chat.unreadCount}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </button>
+
+                    {/* DELETE BUTTON (Visible on Hover) */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-2 top-8 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100 hover:text-red-600"
+                      onClick={(e) => {
+                        e.stopPropagation(); // Don't select the chat when deleting
+                        if(confirm("Delete this conversation permanently?")) {
+                          deleteMutation.mutate(chat.userId);
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 ))}
               </div>
             )}
           </ScrollArea>
         </Card>
 
-        {/* --- RIGHT SIDE: ACTIVE CHAT --- */}
+        {/* RIGHT SIDE: CHAT */}
         <Card className="flex flex-col h-full overflow-hidden border-border/60 shadow-sm">
           {activeConversation ? (
             <>
-              {/* Chat Header */}
               <div className="p-4 border-b bg-background flex items-center gap-3 shadow-sm z-10">
                 <Avatar className="h-9 w-9 border">
                   <AvatarFallback className="bg-primary/10 text-primary">
@@ -180,7 +246,6 @@ export default function InboxPage() {
                 </div>
               </div>
 
-              {/* Messages Area */}
               <ScrollArea className="flex-1 p-4 bg-slate-50/50">
                 <div className="flex flex-col gap-4">
                   {activeConversation.messages.map((msg) => {
@@ -196,16 +261,24 @@ export default function InboxPage() {
                         )}
                       >
                         {msg.content}
-                        <span className={cn("text-[10px] self-end opacity-70", isMe ? "text-primary-foreground/80" : "text-muted-foreground")}>
-                          {new Date(msg.sent_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                        </span>
+                        <div className={cn("flex items-center gap-1 text-[10px] self-end opacity-70", isMe ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                          <span>{new Date(msg.sent_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+                          
+                          {/* READ RECEIPT INDICATOR */}
+                          {isMe && (
+                            msg.read ? (
+                              <CheckCheck className="h-3 w-3" /> // Double Check (Read)
+                            ) : (
+                              <Check className="h-3 w-3" /> // Single Check (Sent)
+                            )
+                          )}
+                        </div>
                       </div>
                     );
                   })}
                 </div>
               </ScrollArea>
 
-              {/* Input Area */}
               <div className="p-4 bg-background border-t">
                 <form 
                   onSubmit={(e) => {
@@ -238,7 +311,6 @@ export default function InboxPage() {
             </div>
           )}
         </Card>
-
       </div>
     </div>
   );
