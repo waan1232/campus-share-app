@@ -25,8 +25,8 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/auth" component={AuthPage} />
       <Route path="/about" component={About} />
+      <Route path="/items/new" component={PostItem} />
       <Route path="/items/:id" component={ItemDetail} />
-      <Route path="/inbox" component={InboxPage} />
       <Route path="/account" component={AccountPage} />
       <Route path="/login">
         {() => <AuthPage mode="login" />}
