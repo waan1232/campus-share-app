@@ -3,10 +3,10 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, CheckCircle2, Search, ShieldCheck, Wallet, GraduationCap, School } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { useAuth } from "@/hooks/use-auth"; // Added Import
+import { useAuth } from "@/hooks/use-auth";
 
 export default function Home() {
-  const { user } = useAuth(); // Get User Data
+  const { user } = useAuth();
 
   const features = [
     {
@@ -26,6 +26,26 @@ export default function Home() {
     }
   ];
 
+  // --- DEFINED CATEGORIES WITH SPECIFIC IMAGES ---
+  const categories = [
+    {
+      name: "Electronics",
+      image: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=800" // Circuit Board
+    },
+    {
+      name: "Textbooks",
+      image: "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&q=80&w=800" // Library/Books
+    },
+    {
+      name: "Party",
+      image: "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=800" // Event/Concert
+    },
+    {
+      name: "Sports",
+      image: "https://images.unsplash.com/photo-1505250469679-253ceea17c3b?auto=format&fit=crop&q=80&w=800" // Stadium
+    }
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Navbar />
@@ -35,7 +55,7 @@ export default function Home() {
         <div className="container relative z-10">
           <div className="mx-auto max-w-3xl text-center">
             
-            {/* --- NEW SCHOOL BADGE (Visible only if logged in) --- */}
+            {/* School Badge */}
             {user?.school && (
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9 }}
@@ -62,7 +82,6 @@ export default function Home() {
               transition={{ duration: 0.5, delay: 0.1 }}
               className="text-lg text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed"
             >
-              {/* Dynamic Text based on School Status */}
               {user?.school ? (
                  <span>
                    You are currently browsing exclusive listings from students at <strong>{user.school}</strong>.
@@ -100,7 +119,7 @@ export default function Home() {
           </div>
         </div>
         
-        {/* Abstract Background Shapes */}
+        {/* Background Shapes */}
         <div className="absolute top-0 left-0 -z-10 h-full w-full overflow-hidden opacity-30 pointer-events-none">
           <div className="absolute -top-[20%] -left-[10%] h-[500px] w-[500px] rounded-full bg-primary/20 blur-3xl" />
           <div className="absolute top-[30%] -right-[10%] h-[400px] w-[400px] rounded-full bg-accent/20 blur-3xl" />
@@ -156,17 +175,17 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {['Electronics', 'Textbooks', 'Party', 'Sports'].map((category) => (
-              <Link key={category} href={`/items?category=${category}`}>
+            {/* --- UPDATED LOOP: Uses mapped object instead of string --- */}
+            {categories.map((category) => (
+              <Link key={category.name} href={`/items?category=${category.name}`}>
                 <div className="group relative overflow-hidden rounded-xl aspect-[4/3] cursor-pointer bg-muted">
-                  {/* Replaced unsplash source with generic placeholder to prevent 404s if API fails */}
                   <img 
-                    src={`https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&q=80&w=800`} 
-                    alt={category}
+                    src={category.image} 
+                    alt={category.name}
                     className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110 opacity-80 group-hover:opacity-100"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-6">
-                    <h3 className="text-white font-bold text-lg">{category}</h3>
+                    <h3 className="text-white font-bold text-lg">{category.name}</h3>
                   </div>
                 </div>
               </Link>
