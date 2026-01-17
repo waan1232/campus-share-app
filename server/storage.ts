@@ -1,7 +1,7 @@
 import { User, InsertUser, Item, InsertItem, Rental, InsertRental, users, items, rentals, favorites } from "@shared/schema";
 import session from "express-session";
 import { db } from "./db";
-import { eq, or, and, desc, like } from "drizzle-orm";
+import { eq, or, and, desc, like, inArray } from "drizzle-orm"; // Added inArray
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
 
@@ -10,9 +10,11 @@ const PostgresSessionStore = connectPg(session);
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  createUser(user: InsertUser & { school?: string }): Promise<User>; // Updated type
 
-  getItems(filters?: { search?: string, category?: string }): Promise<(Item & { ownerName: string })[]>;
+  // Updated getItems signature to accept school filter
+  getItems(filters?: { search?: string, category?: string, school?: string }): Promise<(Item & { ownerName: string })[]>;
+  
   getItem(id: number): Promise<(Item & { ownerName: string }) | undefined>;
   getUserItems(userId: number): Promise<(Item & { ownerName: string })[]>;
   createItem(item: InsertItem): Promise<Item>;
@@ -23,6 +25,9 @@ export interface IStorage {
   updateItem(itemId: number, item: Partial<InsertItem>): Promise<Item | undefined>;
   toggleFavorite(userId: number, itemId: number): Promise<boolean>;
   getFavorites(userId: number): Promise<(Item & { ownerName: string })[]>;
+  createUnavailabilityBlock(itemId: number, ownerId: number, startDate: Date, endDate: Date): Promise<Rental>;
+  deleteRental(id: number): Promise<void>;
+  deleteItem(id: number): Promise<void>;
 
   sessionStore: session.Store;
 }
@@ -47,13 +52,41 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async createUser(insertUser: InsertUser & { school?: string }): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
-  async getItems(filters?: { search?: string, category?: string }): Promise<(Item & { ownerName: string })[]> {
-    let query = db.select({
+  async getItems(filters?: { search?: string, category?: string, school?: string }): Promise<(Item & { ownerName: string })[]> {
+    let conditions = [eq(items.isAvailable, true)]; // Default condition
+
+    // 1. Category Filter
+    if (filters?.category && filters.category !== "All") {
+      conditions.push(eq(items.category, filters.category));
+    }
+
+    // 2. Search Filter
+    if (filters?.search) {
+      conditions.push(or(
+        like(items.title, `%${filters.search}%`),
+        like(items.description, `%${filters.search}%`)
+      ));
+    }
+
+    // 3. School Filter (The new Logic)
+    if (filters?.school) {
+        // Find all users who belong to this school
+        const ownersAtSchool = db
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.school, filters.school));
+        
+        // Only show items owned by those users
+        conditions.push(inArray(items.ownerId, ownersAtSchool));
+    }
+
+    // Build Query
+    const results = await db.select({
       id: items.id,
       ownerId: items.ownerId,
       title: items.title,
@@ -69,26 +102,9 @@ export class DatabaseStorage implements IStorage {
     })
     .from(items)
     .innerJoin(users, eq(items.ownerId, users.id))
-    .where(eq(items.isAvailable, true));
+    .where(and(...conditions)) // Apply all conditions
+    .orderBy(desc(items.createdAt));
 
-    if (filters?.category && filters.category !== "All") {
-      // @ts-ignore - Dynamic query building
-      query.where(eq(items.category, filters.category));
-    }
-
-    if (filters?.search) {
-      // @ts-ignore
-      query.where(or(
-        like(items.title, `%${filters.search}%`),
-        like(items.description, `%${filters.search}%`)
-      ));
-    }
-    
-    // Sort by newest
-    // @ts-ignore
-    query.orderBy(desc(items.createdAt));
-
-    const results = await query;
     return results.map(r => ({
       ...r,
       ownerName: r.ownerName as string
