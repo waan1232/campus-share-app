@@ -10,6 +10,7 @@ import multer from "multer";
 import path from "path";
 import express from "express";
 import fs from "fs";
+import { sendVerificationEmail } from "./mailer"; // Import mailer for resend logic
 
 export async function registerRoutes(
   httpServer: Server,
@@ -82,12 +83,13 @@ export async function registerRoutes(
     console.error("Error updating schema:", err);
   }
 
-  // --- NEW: VERIFY ACCOUNT ROUTE ---
+  // --- VERIFICATION ROUTES ---
+
+  // 1. Verify Account
   app.post("/api/verify-account", async (req, res) => {
       if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
       const { code } = req.body;
       
-      // Call storage to check the code
       const success = await storage.verifyUser((req.user as any).id, code);
       
       if (success) {
@@ -97,14 +99,42 @@ export async function registerRoutes(
       }
   });
 
+  // 2. Resend Verification Code (NEW)
+  app.post("/api/resend-verification", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    const user = req.user as any;
+    
+    // Generate new code
+    const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    try {
+      // Update DB
+      await pool.query(`UPDATE users SET verification_code = $1 WHERE id = $2`, [newCode, user.id]);
+      
+      // Send Email
+      console.log(`Resending code to ${user.email}...`);
+      await sendVerificationEmail(user.email, newCode);
+      
+      res.sendStatus(200);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ message: "Failed to resend code" });
+    }
+  });
+
+  // 3. Manual Logout (For users stuck in verify screen)
+  app.post("/api/auth/logout", (req, res, next) => {
+    req.logout((err) => {
+      if (err) return next(err);
+      res.sendStatus(200);
+    });
+  });
+
   // --- ACCOUNT ROUTES ---
   app.patch("/api/user", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
     const { name, email, bio, location, venmo_handle, cashapp_tag } = req.body; 
-
-    // Note: If email changes, school/verification might need reset logic in future.
-    // For now, we update profile fields.
 
     try {
       const result = await pool.query(
@@ -125,7 +155,47 @@ export async function registerRoutes(
     }
   });
 
-  // --- EARNINGS ROUTE ---
+  // DELETE ACCOUNT (With Cascade Fix)
+  app.delete("/api/user", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    const userId = (req.user as any).id;
+    
+    try {
+      await storage.deleteUser(userId);
+      req.logout((err) => {
+        if (err) return res.status(500).send("Error logging out");
+        res.sendStatus(200);
+      });
+    } catch (error) {
+      console.error("Delete account error:", error);
+      res.status(500).json({ error: "Failed to delete account" });
+    }
+  });
+
+  app.patch("/api/user/password", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    const userId = (req.user as any).id;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+
+    try {
+      const { scrypt, randomBytes } = await import("crypto");
+      const { promisify } = await import("util");
+      const scryptAsync = promisify(scrypt);
+      const salt = randomBytes(16).toString("hex");
+      const buf = (await scryptAsync(newPassword, salt, 64)) as Buffer;
+      const hashedPassword = `${buf.toString("hex")}.${salt}`;
+
+      await pool.query(`UPDATE users SET password = $1 WHERE id = $2`, [hashedPassword, userId]);
+      res.sendStatus(200);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update password" });
+    }
+  });
+
   app.get("/api/earnings", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
@@ -157,39 +227,15 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/user/password", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
-    const userId = (req.user as any).id;
-    const { newPassword } = req.body;
-
-    if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
-    }
-
-    try {
-      const { scrypt, randomBytes } = await import("crypto");
-      const { promisify } = await import("util");
-      const scryptAsync = promisify(scrypt);
-      const salt = randomBytes(16).toString("hex");
-      const buf = (await scryptAsync(newPassword, salt, 64)) as Buffer;
-      const hashedPassword = `${buf.toString("hex")}.${salt}`;
-
-      await pool.query(`UPDATE users SET password = $1 WHERE id = $2`, [hashedPassword, userId]);
-      res.sendStatus(200);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update password" });
-    }
-  });
-
-  // --- ITEM ROUTES (UPDATED FOR GATEKEEPER) ---
+  // --- ITEM ROUTES ---
   app.get(api.items.list.path, async (req, res) => {
     const search = req.query.search as string | undefined;
     const category = req.query.category as string | undefined;
     
-    // PASS THE FULL USER OBJECT so storage can check isVerified & school
+    // Pass the user (if logged in) or undefined (if public)
     const user = req.isAuthenticated() ? (req.user as any) : undefined;
 
-    // The storage engine now decides what to show based on the user
+    // Storage now handles showing "General Public" items to guests
     const items = await storage.getItems(user, { search, category });
     res.json(items);
   });
@@ -300,8 +346,6 @@ export async function registerRoutes(
   });
 
   // --- MESSAGING SYSTEM ROUTES ---
-
-  // 1. Send Message (with optional Offer & Dates)
   app.post("/api/messages", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     
@@ -323,24 +367,19 @@ export async function registerRoutes(
     }
   });
 
-  // 2. Respond to Offer (Accept/Reject + CREATE RENTAL)
   app.patch("/api/messages/:id/offer", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const msgId = Number(req.params.id);
     const { status } = req.body; // 'accepted' or 'rejected'
 
     try {
-      // 1. Update the message status
       const msgResult = await pool.query(
         `UPDATE messages SET offer_status = $1 WHERE id = $2 RETURNING *`,
         [status, msgId]
       );
       const message = msgResult.rows[0];
 
-      // 2. IF ACCEPTED: Create the actual Rental Record
       if (status === 'accepted' && message.item_id && message.start_date && message.end_date) {
-        // Find the "sender" of the message - they are the Renter
-        // (If I accepted the offer, the person who sent me the offer is the one renting it)
         await storage.createRental({
             itemId: message.item_id,
             renterId: message.sender_id, 
@@ -356,7 +395,6 @@ export async function registerRoutes(
     }
   });
 
-  // 3. Get Messages (Updated to fetch Item details)
   app.get("/api/messages", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const myId = (req.user as any).id;
@@ -383,7 +421,6 @@ export async function registerRoutes(
     }
   });
 
-  // 4. Mark Read & Delete
   app.post("/api/messages/mark-read", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const { senderId } = req.body;
@@ -422,14 +459,12 @@ async function seedDatabase() {
         return `${buf.toString("hex")}.${salt}`;
     }
     const pwd = await hash("password123");
-    // Ensure admin user is verified so they can see items
     user = await storage.createUser({ 
         username: "campus_admin", 
         password: pwd, 
         name: "Admin User", 
         email: "admin@college.edu",
     });
-    // Manually verify admin
     if(user) {
         await pool.query(`UPDATE users SET is_verified = TRUE WHERE id = $1`, [user.id]);
     }
