@@ -17,6 +17,7 @@ import About from "@/pages/About";
 import InboxPage from "@/pages/inbox";
 import AccountPage from "@/pages/Account";
 import VerifyPage from "@/pages/verify";
+import Dashboard from "@/pages/Dashboard"; //
 
 // --- THE GUARD COMPONENT ---
 // Blocks access if you are NOT logged in OR NOT verified
