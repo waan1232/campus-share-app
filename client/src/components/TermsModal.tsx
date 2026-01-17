@@ -36,7 +36,7 @@ export function TermsModal() {
               CampusShare is a peer-to-peer venue. We are not a party to any rental agreement between users. We do not own, sell, resell, furnish, provide, rent, re-rent, manage and/or control properties or goods.
             </p>
 
-            <h3 className="font-bold text-foreground">3. Liability Release (Crucial)</h3>
+            <h3 className="font-bold text-foreground">3. Liability Release</h3>
             <p>
               <strong>You hereby release CampusShare and its affiliates from any liability</strong> arising from your use of the service. You agree that:
             </p>
