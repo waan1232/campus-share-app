@@ -4,6 +4,7 @@ import { db } from "./db";
 import { eq, or, and, desc, like, inArray } from "drizzle-orm";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
+import { sendVerificationEmail } from "./mailer"; // <--- IMPORTED MAILER
 
 const PostgresSessionStore = connectPg(session);
 
@@ -39,6 +40,9 @@ export interface IStorage {
   createUnavailabilityBlock(itemId: number, ownerId: number, startDate: Date, endDate: Date): Promise<Rental>;
   deleteRental(id: number): Promise<void>;
   deleteItem(id: number): Promise<void>;
+  
+  // Account Deletion
+  deleteUser(userId: number): Promise<void>;
 
   sessionStore: session.Store;
 }
@@ -65,20 +69,17 @@ export class DatabaseStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     // 1. DYNAMIC SCHOOL DETECTION
-    // We assume the schema already validated it ends in .edu
-    // We extract the domain (e.g., "purdue.edu" from "john@purdue.edu")
     const emailParts = insertUser.email.split('@');
     const domain = emailParts.length > 1 ? emailParts[1] : 'General Public';
 
     // 2. GENERATE VERIFICATION CODE (6 Digits)
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // 3. LOG CODE TO CONSOLE (Simulation)
-    console.log(`\n=== VERIFICATION SIMULATION ===`);
-    console.log(`To: ${insertUser.email}`);
-    console.log(`School Detected: ${domain}`);
-    console.log(`Your Code: ${code}`);
-    console.log(`===============================\n`);
+    // 3. SEND REAL EMAIL (Using Resend)
+    console.log(`Attempting to send verification email to ${insertUser.email}...`);
+    
+    // We await this to ensure the email is sent before creating the user response
+    await sendVerificationEmail(insertUser.email, code);
 
     const [user] = await db.insert(users).values({
         ...insertUser,
@@ -104,15 +105,11 @@ export class DatabaseStorage implements IStorage {
   async getItems(user?: User, filters?: { search?: string, category?: string }): Promise<(Item & { ownerName: string })[]> {
     
     // --- GATEKEEPER LOGIC ---
-    // 1. Must be Logged In
-    // 2. Must be Verified
-    // 3. Must have a School assigned
     if (!user || !user.isVerified || !user.school) {
         return []; // Return NOTHING if checks fail
     }
 
     // --- SILO LOGIC ---
-    // Only show items owned by people in the SAME school
     const ownersAtMySchool = db
         .select({ id: users.id })
         .from(users)
@@ -356,6 +353,40 @@ export class DatabaseStorage implements IStorage {
             and(eq(messages.senderId, userA), eq(messages.receiverId, userB)),
             and(eq(messages.senderId, userB), eq(messages.receiverId, userA))
         ));
+  }
+
+  // --- DELETE USER (Cascading Delete) ---
+  // Fixes "violates foreign key constraint" error
+  async deleteUser(userId: number): Promise<void> {
+    // 1. Delete messages (sent or received by user)
+    await db.delete(messages).where(or(
+        eq(messages.senderId, userId),
+        eq(messages.receiverId, userId)
+    ));
+
+    // 2. Delete rentals (where user is renter)
+    await db.delete(rentals).where(eq(rentals.renterId, userId));
+
+    // 3. Delete favorites
+    await db.delete(favorites).where(eq(favorites.userId, userId));
+
+    // 4. Delete items owned by user (and their associated rentals/messages)
+    const userItems = await db.select({ id: items.id }).from(items).where(eq(items.ownerId, userId));
+    const itemIds = userItems.map(i => i.id);
+    
+    if (itemIds.length > 0) {
+        // Delete rentals on these items (where user is Owner)
+        await db.delete(rentals).where(inArray(rentals.itemId, itemIds));
+        // Delete favorites on these items
+        await db.delete(favorites).where(inArray(favorites.itemId, itemIds));
+        // Delete messages linked to these items
+        await db.delete(messages).where(inArray(messages.itemId, itemIds));
+        // Finally delete the items
+        await db.delete(items).where(inArray(items.id, itemIds));
+    }
+
+    // 5. Delete the user
+    await db.delete(users).where(eq(users.id, userId));
   }
 }
 
