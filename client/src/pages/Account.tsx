@@ -26,20 +26,18 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+// --- NEW IMPORTS FOR WITHDRAWAL ---
+import { 
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription 
+} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// Types for Earnings
-interface EarningTransaction {
-  id: number;
-  title: string;
-  total_earnings: number;
-  days: number;
-  renter_name: string;
-  start_date: string;
-}
-
-interface EarningsData {
-  total: number;
-  history: EarningTransaction[];
+// Types for Balance & Withdrawals
+interface BalanceData {
+  totalEarned: number;
+  totalWithdrawn: number;
+  available: number;
+  history: any[]; // Withdrawal history
 }
 
 export default function AccountPage() {
@@ -62,6 +60,11 @@ export default function AccountPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  // Form States (Withdrawal)
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawMethod, setWithdrawMethod] = useState("venmo");
+  const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
+
   // Populate state when user loads
   useEffect(() => {
     if (user) {
@@ -80,10 +83,10 @@ export default function AccountPage() {
     enabled: !!user,
   });
 
-  // FETCH REAL DATA: Get Earnings
-  const { data: earnings } = useQuery<EarningsData>({
-    queryKey: ["/api/earnings"],
-    enabled: !!user && activeTab === "billing", // Only fetch when tab is open
+  // --- NEW: FETCH BALANCE DATA ---
+  const { data: balance, refetch: refetchBalance } = useQuery<BalanceData>({
+    queryKey: ["/api/balance"],
+    enabled: !!user && activeTab === "billing",
   });
 
   // Update Profile Mutation
@@ -124,6 +127,30 @@ export default function AccountPage() {
     onError: (error: any) => {
       toast({ title: "Failed to delete", description: error.message, variant: "destructive" });
     }
+  });
+
+  // --- NEW: WITHDRAW MUTATION ---
+  const withdrawMutation = useMutation({
+    mutationFn: async () => {
+      // Determine details based on method
+      let details = "";
+      if (withdrawMethod === "venmo") details = venmo || "Not set";
+      if (withdrawMethod === "cashapp") details = cashapp || "Not set";
+      if (withdrawMethod === "debit") details = "Debit Card Request";
+
+      await apiRequest("POST", "/api/withdraw", {
+        amount: Number(withdrawAmount),
+        method: withdrawMethod,
+        details: details
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Request Sent", description: "You will receive funds within 24 hours." });
+      setIsWithdrawOpen(false);
+      setWithdrawAmount("");
+      refetchBalance(); // Refresh the balance card
+    },
+    onError: () => toast({ title: "Error", description: "Could not process request", variant: "destructive" })
   });
 
   if (isLoading || !user) {
@@ -265,32 +292,115 @@ export default function AccountPage() {
              {activeTab === "billing" && (
               <div className="space-y-6">
                 
-                {/* 1. Total Earnings Card */}
-                <Card className="bg-gradient-to-br from-gray-900 to-gray-800 text-white border-none shadow-xl">
+                {/* 1. BALANCE CARD (With Withdraw Feature) */}
+                <Card className="bg-gradient-to-br from-primary to-blue-700 text-white border-none shadow-xl">
                   <CardContent className="p-6">
-                    <div className="flex justify-between items-start mb-6">
+                    <div className="flex justify-between items-start">
                       <div>
-                        <p className="text-gray-400 font-medium mb-1">Total Lifetime Earnings</p>
-                        <h2 className="text-4xl font-bold font-display">
-                          {earnings ? formatCurrency(earnings.total) : "..."}
+                        <p className="text-blue-100 font-medium mb-1">Available to Withdraw</p>
+                        <h2 className="text-5xl font-bold font-display tracking-tight">
+                          ${balance?.available || 0}
                         </h2>
                       </div>
-                      <div className="p-3 bg-white/10 rounded-full">
-                        <TrendingUp className="h-6 w-6 text-green-400" />
-                      </div>
+                      
+                      {/* WITHDRAW MODAL */}
+                      <Dialog open={isWithdrawOpen} onOpenChange={setIsWithdrawOpen}>
+                        <DialogTrigger asChild>
+                          <Button variant="secondary" size="lg" className="font-bold shadow-lg">
+                            Withdraw Funds
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[425px]">
+                          <DialogHeader>
+                            <DialogTitle>Withdraw Funds</DialogTitle>
+                            <DialogDescription>
+                              Choose where you want us to send your money.
+                            </DialogDescription>
+                          </DialogHeader>
+                          
+                          <div className="grid gap-4 py-4">
+                            <div className="space-y-2">
+                              <Label>Amount ($)</Label>
+                              <Input 
+                                type="number" 
+                                placeholder="0.00" 
+                                value={withdrawAmount}
+                                onChange={(e) => setWithdrawAmount(e.target.value)}
+                                max={balance?.available}
+                              />
+                              <p className="text-xs text-muted-foreground">Max: ${balance?.available}</p>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              <Label>Payout Method</Label>
+                              <Select value={withdrawMethod} onValueChange={setWithdrawMethod}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="venmo">Venmo ({venmo || "Not Set"})</SelectItem>
+                                  <SelectItem value="cashapp">Cash App ({cashapp || "Not Set"})</SelectItem>
+                                  <SelectItem value="debit">Debit Card (Stripe)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          <DialogFooter>
+                            <Button onClick={() => withdrawMutation.mutate()} disabled={withdrawMutation.isPending || !withdrawAmount}>
+                              {withdrawMutation.isPending ? <Loader2 className="animate-spin mr-2" /> : null}
+                              Confirm Withdraw
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
                     </div>
-                    <div className="flex gap-4 text-sm">
-                      <div className="bg-white/10 px-3 py-1 rounded-full flex items-center gap-2">
-                        <Package className="h-3 w-3" /> {earnings?.history.length || 0} Transactions
+
+                    <div className="mt-8 flex gap-6 text-sm text-blue-100">
+                      <div>
+                        <span className="opacity-70">Lifetime Earnings:</span> 
+                        <span className="font-bold ml-2">${balance?.totalEarned || 0}</span>
                       </div>
-                      <div className="bg-white/10 px-3 py-1 rounded-full flex items-center gap-2">
-                          <DollarSign className="h-3 w-3" /> Payouts via Venmo
+                      <div>
+                        <span className="opacity-70">Total Withdrawn:</span> 
+                        <span className="font-bold ml-2">${balance?.totalWithdrawn || 0}</span>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* 2. Payout Methods */}
+                {/* 2. WITHDRAWAL HISTORY */}
+                <Card>
+                   <CardHeader><CardTitle>Withdrawal History</CardTitle></CardHeader>
+                   <CardContent>
+                     {!balance || balance.history.length === 0 ? (
+                       <p className="text-muted-foreground text-sm">No withdrawals yet.</p>
+                     ) : (
+                       <div className="space-y-4">
+                         {balance.history.map((tx: any) => (
+                           <div key={tx.id} className="flex justify-between items-center border-b pb-2 last:border-0">
+                             <div>
+                               <p className="font-bold capitalize">{tx.method} Transfer</p>
+                               <p className="text-xs text-muted-foreground">{new Date(tx.created_at).toLocaleDateString()}</p>
+                             </div>
+                             <div className="text-right">
+                               <span className="font-bold block">-${tx.amount}</span>
+                               <span className={cn(
+                                 "text-xs font-bold px-2 py-0.5 rounded-full",
+                                 tx.status === 'pending' ? "bg-yellow-100 text-yellow-700" :
+                                 tx.status === 'paid' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                               )}>
+                                 {tx.status.toUpperCase()}
+                               </span>
+                             </div>
+                           </div>
+                         ))}
+                       </div>
+                     )}
+                   </CardContent>
+                </Card>
+
+                {/* 3. Payout Destination Config */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Payout Destination</CardTitle>
@@ -343,41 +453,6 @@ export default function AccountPage() {
                       </Button>
                     </div>
                   </CardContent>
-                </Card>
-
-                {/* 3. Recent History Table */}
-                <Card>
-                   <CardHeader>
-                    <CardTitle>Recent Transactions</CardTitle>
-                   </CardHeader>
-                   <CardContent className="p-0">
-                     {earnings && earnings.history.length > 0 ? (
-                       <div className="divide-y">
-                         {earnings.history.map((tx) => (
-                           <div key={tx.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
-                             <div className="flex gap-3 items-center">
-                               <div className="h-10 w-10 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
-                                 <DollarSign className="h-5 w-5" />
-                               </div>
-                               <div>
-                                 <p className="font-bold text-sm">{tx.title}</p>
-                                 <p className="text-xs text-muted-foreground">Rented by {tx.renter_name} • {tx.days} Days</p>
-                               </div>
-                             </div>
-                             <div className="text-right">
-                               <p className="font-bold text-green-600">+{formatCurrency(tx.total_earnings)}</p>
-                               <p className="text-xs text-muted-foreground">{new Date(tx.start_date).toLocaleDateString()}</p>
-                             </div>
-                           </div>
-                         ))}
-                       </div>
-                     ) : (
-                       <div className="p-8 text-center text-muted-foreground">
-                         <Wallet className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                         <p>No completed rentals yet.</p>
-                       </div>
-                     )}
-                   </CardContent>
                 </Card>
               </div>
             )}
