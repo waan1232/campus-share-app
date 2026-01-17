@@ -1,20 +1,46 @@
-import { User, InsertUser, Item, InsertItem, Rental, InsertRental, users, items, rentals, favorites } from "@shared/schema";
+import { User, InsertUser, Item, InsertItem, Rental, InsertRental, users, items, rentals, favorites, messages } from "@shared/schema";
 import session from "express-session";
 import { db } from "./db";
-import { eq, or, and, desc, like, inArray } from "drizzle-orm"; // Added inArray
+import { eq, or, and, desc, like, inArray } from "drizzle-orm";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
 
 const PostgresSessionStore = connectPg(session);
 
+// --- SCHOOL DETECTION LOGIC (MOVED HERE) ---
+const SCHOOL_DOMAINS: Record<string, string> = {
+  'purdue.edu': 'Purdue University',
+  'bowdoin.edu': 'Bowdoin College',
+  'harvard.edu': 'Harvard University',
+  'yale.edu': 'Yale University',
+  'gvsu.edu': 'Grand Valley State University',
+  'wmich.edu': 'Western Michigan University',
+  'umich.edu': 'University of Michigan',
+  'msu.edu': 'Michigan State University',
+  'wayne.edu': 'Wayne State University',
+  'indiana.edu': 'Indiana University',
+  'nd.edu': 'University of Notre Dame'
+};
+
+function determineSchool(email: string): string {
+  if (!email || !email.includes('@')) return 'General Public';
+  const domain = email.split('@')[1];
+  
+  if (SCHOOL_DOMAINS[domain]) return SCHOOL_DOMAINS[domain];
+
+  for (const key in SCHOOL_DOMAINS) {
+    if (domain.endsWith(key)) return SCHOOL_DOMAINS[key];
+  }
+
+  return 'General Public';
+}
+
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser & { school?: string }): Promise<User>; // Updated type
+  createUser(user: InsertUser): Promise<User>;
 
-  // Updated getItems signature to accept school filter
   getItems(filters?: { search?: string, category?: string, school?: string }): Promise<(Item & { ownerName: string })[]>;
-  
   getItem(id: number): Promise<(Item & { ownerName: string }) | undefined>;
   getUserItems(userId: number): Promise<(Item & { ownerName: string })[]>;
   createItem(item: InsertItem): Promise<Item>;
@@ -25,6 +51,14 @@ export interface IStorage {
   updateItem(itemId: number, item: Partial<InsertItem>): Promise<Item | undefined>;
   toggleFavorite(userId: number, itemId: number): Promise<boolean>;
   getFavorites(userId: number): Promise<(Item & { ownerName: string })[]>;
+  
+  // Messages
+  createMessage(message: any): Promise<any>;
+  getMessages(userId: number): Promise<any[]>;
+  updateOfferStatus(msgId: number, status: string): Promise<any>;
+  markMessagesRead(senderId: number, receiverId: number): Promise<void>;
+  deleteConversation(userA: number, userB: number): Promise<void>;
+
   createUnavailabilityBlock(itemId: number, ownerId: number, startDate: Date, endDate: Date): Promise<Rental>;
   deleteRental(id: number): Promise<void>;
   deleteItem(id: number): Promise<void>;
@@ -52,20 +86,24 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async createUser(insertUser: InsertUser & { school?: string }): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
+  async createUser(insertUser: InsertUser): Promise<User> {
+    // AUTOMATICALLY ASSIGN SCHOOL ON CREATION
+    const school = determineSchool(insertUser.email || "");
+    
+    const [user] = await db.insert(users).values({
+        ...insertUser,
+        school: school // Force the detected school
+    }).returning();
     return user;
   }
 
   async getItems(filters?: { search?: string, category?: string, school?: string }): Promise<(Item & { ownerName: string })[]> {
-    let conditions = [eq(items.isAvailable, true)]; // Default condition
+    let conditions = [eq(items.isAvailable, true)];
 
-    // 1. Category Filter
     if (filters?.category && filters.category !== "All") {
       conditions.push(eq(items.category, filters.category));
     }
 
-    // 2. Search Filter
     if (filters?.search) {
       conditions.push(or(
         like(items.title, `%${filters.search}%`),
@@ -73,19 +111,18 @@ export class DatabaseStorage implements IStorage {
       ));
     }
 
-    // 3. School Filter (The new Logic)
-    // 3. School Filter (STRICT MODE)
-    // If a school is provided (Logged In), show items from that school.
-    if (filters?.school) {
+    // --- STRICT SCHOOL FILTERING ---
+    if (filters?.school && filters.school !== 'General Public') {
+        // If you belong to a specific school, ONLY see items from that school
         const ownersAtSchool = db
             .select({ id: users.id })
             .from(users)
             .where(eq(users.school, filters.school));
         
         conditions.push(inArray(items.ownerId, ownersAtSchool));
-    } 
-    // If NO school is provided (Logged Out), ONLY show "General Public" items
-    else {
+    } else {
+        // If you are General Public (or logged out), ONLY see General Public items
+        // This hides Purdue/Harvard items from random visitors
         const publicOwners = db
             .select({ id: users.id })
             .from(users)
@@ -94,7 +131,6 @@ export class DatabaseStorage implements IStorage {
         conditions.push(inArray(items.ownerId, publicOwners));
     }
 
-    // Build Query
     const results = await db.select({
       id: items.id,
       ownerId: items.ownerId,
@@ -111,7 +147,7 @@ export class DatabaseStorage implements IStorage {
     })
     .from(items)
     .innerJoin(users, eq(items.ownerId, users.id))
-    .where(and(...conditions)) // Apply all conditions
+    .where(and(...conditions))
     .orderBy(desc(items.createdAt));
 
     return results.map(r => ({
@@ -231,7 +267,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getRentalsForUser(userId: number): Promise<{ outgoing: (Rental & { item: Item })[], incoming: (Rental & { item: Item, renter: User })[] }> {
-    // Items I requested to rent (outgoing)
     const outgoingResults = await db.select({
       id: rentals.id,
       itemId: rentals.itemId,
@@ -246,7 +281,6 @@ export class DatabaseStorage implements IStorage {
     .innerJoin(items, eq(rentals.itemId, items.id))
     .where(eq(rentals.renterId, userId));
 
-    // Items I own that others requested (incoming)
     const incomingResults = await db.select({
       id: rentals.id,
       itemId: rentals.itemId,
@@ -280,7 +314,7 @@ export class DatabaseStorage implements IStorage {
   async createUnavailabilityBlock(itemId: number, ownerId: number, startDate: Date, endDate: Date): Promise<Rental> {
     const [block] = await db.insert(rentals).values({
       itemId,
-      renterId: ownerId, // Owner is the "renter" for a block
+      renterId: ownerId, 
       startDate,
       endDate,
       status: "unavailable_block",
@@ -290,6 +324,35 @@ export class DatabaseStorage implements IStorage {
 
   async deleteRental(id: number): Promise<void> {
     await db.delete(rentals).where(eq(rentals.id, id));
+  }
+
+  // --- MESSAGES IMPLEMENTATION ---
+  async createMessage(message: any): Promise<any> {
+    const [msg] = await db.insert(messages).values(message).returning();
+    return msg;
+  }
+
+  async getMessages(userId: number): Promise<any[]> {
+    return await db.select().from(messages).where(or(eq(messages.senderId, userId), eq(messages.receiverId, userId)));
+  }
+
+  async updateOfferStatus(msgId: number, status: string): Promise<any> {
+     const [updated] = await db.update(messages).set({ offerStatus: status }).where(eq(messages.id, msgId)).returning();
+     return updated;
+  }
+
+  async markMessagesRead(senderId: number, receiverId: number): Promise<void> {
+    await db.update(messages)
+        .set({ read: true })
+        .where(and(eq(messages.senderId, senderId), eq(messages.receiverId, receiverId)));
+  }
+
+  async deleteConversation(userA: number, userB: number): Promise<void> {
+      await db.delete(messages)
+        .where(or(
+            and(eq(messages.senderId, userA), eq(messages.receiverId, userB)),
+            and(eq(messages.senderId, userB), eq(messages.receiverId, userA))
+        ));
   }
 }
 
