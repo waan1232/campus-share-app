@@ -7,6 +7,9 @@ import { insertUserSchema, type InsertUser } from "@shared/schema";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox"; // Added
+import { Label } from "@/components/ui/label";       // Added
+import { TermsModal } from "@/components/TermsModal"; // Added
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { GraduationCap, Loader2 } from "lucide-react";
@@ -151,6 +154,9 @@ function LoginForm({ onSubmit, isLoading }: { onSubmit: (data: any) => void, isL
 }
 
 function RegisterForm({ onSubmit, isLoading }: { onSubmit: (data: any) => void, isLoading: boolean }) {
+  // State for Terms Checkbox
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+
   const form = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
     defaultValues: { username: "", password: "", confirmPassword: "", email: "", name: "" },
@@ -226,7 +232,29 @@ function RegisterForm({ onSubmit, isLoading }: { onSubmit: (data: any) => void, 
             )}
           />
         </div>
-        <Button type="submit" className="w-full" disabled={isLoading}>
+
+        {/* TERMS OF SERVICE CHECKBOX */}
+        <div className="flex items-start space-x-2 py-2">
+          <Checkbox 
+            id="terms" 
+            checked={agreedToTerms}
+            onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
+          />
+          <div className="grid gap-1.5 leading-none">
+            <Label htmlFor="terms" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+              I agree to the <TermsModal />
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              You must accept the liability waiver to join.
+            </p>
+          </div>
+        </div>
+
+        <Button 
+          type="submit" 
+          className="w-full" 
+          disabled={isLoading || !agreedToTerms} // Disable if not checked
+        >
           {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           Create Account
         </Button>
