@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { 
   User, Lock, ShieldCheck, CreditCard, Bell, LogOut, ArrowLeft, Camera, 
-  Package, Wallet, Loader2, TrendingUp, DollarSign, Trash2 
+  Package, Wallet, Loader2, TrendingUp, DollarSign, Trash2, CheckCircle2 
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Item } from "@shared/schema";
@@ -26,18 +26,20 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-// --- NEW IMPORTS FOR WITHDRAWAL ---
-import { 
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription 
-} from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// Types for Balance & Withdrawals
-interface BalanceData {
-  totalEarned: number;
-  totalWithdrawn: number;
-  available: number;
-  history: any[]; // Withdrawal history
+// Types for Earnings
+interface EarningTransaction {
+  id: number;
+  title: string;
+  total_earnings: number;
+  days: number;
+  renter_name: string;
+  start_date: string;
+}
+
+interface EarningsData {
+  total: number;
+  history: EarningTransaction[];
 }
 
 export default function AccountPage() {
@@ -48,48 +50,41 @@ export default function AccountPage() {
   
   const [activeTab, setActiveTab] = useState("profile");
   
-  // Form States (Profile)
+  // Form States
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  
-  // Form States (Payouts)
-  const [venmo, setVenmo] = useState("");
-  const [cashapp, setCashapp] = useState("");
-
-  // Form States (Security)
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-
-  // Form States (Withdrawal)
-  const [withdrawAmount, setWithdrawAmount] = useState("");
-  const [withdrawMethod, setWithdrawMethod] = useState("venmo");
-  const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
 
   // Populate state when user loads
   useEffect(() => {
     if (user) {
       setName(user.name);
       setEmail(user.email);
-      setVenmo((user as any).venmo_handle || "");
-      setCashapp((user as any).cashapp_tag || "");
     } else if (!isLoading) {
       setLocation("/");
     }
   }, [user, isLoading, setLocation]);
 
-  // FETCH REAL DATA: Get My Items count
+  // FETCH: My Items count
   const { data: myItems } = useQuery<Item[]>({
     queryKey: ["/api/my-items"],
     enabled: !!user,
   });
 
-  // --- NEW: FETCH BALANCE DATA ---
-  const { data: balance, refetch: refetchBalance } = useQuery<BalanceData>({
-    queryKey: ["/api/balance"],
+  // FETCH: Earnings
+  const { data: earnings } = useQuery<EarningsData>({
+    queryKey: ["/api/earnings"],
     enabled: !!user && activeTab === "billing",
   });
 
-  // Update Profile Mutation
+  // FETCH: Stripe Status (Check if user has linked their account)
+  const { data: stripeStatus } = useQuery({
+    queryKey: ["/api/stripe/check-status"],
+    enabled: !!user && activeTab === "billing",
+  });
+
+  // MUTATION: Update Profile
   const updateProfileMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await apiRequest("PATCH", "/api/user", data);
@@ -102,7 +97,22 @@ export default function AccountPage() {
     onError: () => toast({ title: "Failed to save settings", variant: "destructive" })
   });
 
-  // Change Password Mutation
+  // MUTATION: Stripe Onboarding (The Magic Link)
+  const stripeOnboardMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/stripe/onboard");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      // Redirect user to Stripe's hosted form
+      window.location.href = data.url;
+    },
+    onError: (e: Error) => {
+      toast({ title: "Connection Failed", description: e.message, variant: "destructive" });
+    }
+  });
+
+  // MUTATION: Change Password
   const changePasswordMutation = useMutation({
     mutationFn: async () => {
       if (password !== confirmPassword) throw new Error("Passwords do not match");
@@ -116,7 +126,7 @@ export default function AccountPage() {
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" })
   });
 
-  // Delete Account Mutation
+  // MUTATION: Delete Account
   const deleteMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("DELETE", "/api/user");
@@ -127,30 +137,6 @@ export default function AccountPage() {
     onError: (error: any) => {
       toast({ title: "Failed to delete", description: error.message, variant: "destructive" });
     }
-  });
-
-  // --- NEW: WITHDRAW MUTATION ---
-  const withdrawMutation = useMutation({
-    mutationFn: async () => {
-      // Determine details based on method
-      let details = "";
-      if (withdrawMethod === "venmo") details = venmo || "Not set";
-      if (withdrawMethod === "cashapp") details = cashapp || "Not set";
-      if (withdrawMethod === "debit") details = "Debit Card Request";
-
-      await apiRequest("POST", "/api/withdraw", {
-        amount: Number(withdrawAmount),
-        method: withdrawMethod,
-        details: details
-      });
-    },
-    onSuccess: () => {
-      toast({ title: "Request Sent", description: "You will receive funds within 24 hours." });
-      setIsWithdrawOpen(false);
-      setWithdrawAmount("");
-      refetchBalance(); // Refresh the balance card
-    },
-    onError: () => toast({ title: "Error", description: "Could not process request", variant: "destructive" })
   });
 
   if (isLoading || !user) {
@@ -170,7 +156,7 @@ export default function AccountPage() {
   return (
     <div className="min-h-screen bg-background pb-20">
       
-      {/* --- HERO HEADER --- */}
+      {/* HEADER */}
       <div className="relative h-48 bg-gradient-to-r from-primary to-blue-600 overflow-hidden">
         <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))]" />
         <div className="container h-full flex items-center relative z-10">
@@ -185,7 +171,7 @@ export default function AccountPage() {
       <div className="container max-w-5xl -mt-20 relative z-20">
         <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-8">
           
-          {/* --- LEFT COLUMN: ID CARD --- */}
+          {/* LEFT: ID CARD */}
           <div className="space-y-6">
             <Card className="overflow-hidden border-none shadow-xl">
               <CardContent className="p-6 flex flex-col items-center text-center pt-10 relative">
@@ -219,17 +205,14 @@ export default function AccountPage() {
                   </div>
                 </div>
                 
-                <div className="mt-6 text-xs text-muted-foreground">
-                    Member since 2024
-                </div>
+                <div className="mt-6 text-xs text-muted-foreground">Member since 2024</div>
               </CardContent>
             </Card>
           </div>
 
-          {/* --- RIGHT COLUMN: SETTINGS TABS --- */}
+          {/* RIGHT: TABS */}
           <div className="space-y-6">
             
-            {/* Custom Tab Switcher */}
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
@@ -251,7 +234,7 @@ export default function AccountPage() {
               })}
             </div>
 
-            {/* --- TAB CONTENT: PROFILE --- */}
+            {/* TAB: PROFILE */}
             {activeTab === "profile" && (
               <Card>
                 <CardHeader>
@@ -261,21 +244,12 @@ export default function AccountPage() {
                 <CardContent className="space-y-6">
                   <div className="grid gap-2">
                     <Label htmlFor="name">Display Name</Label>
-                    <Input 
-                      id="name" 
-                      value={name} 
-                      onChange={(e) => setName(e.target.value)} 
-                    />
+                    <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="email">Email Address</Label>
-                    <Input 
-                      id="email" 
-                      value={email} 
-                      onChange={(e) => setEmail(e.target.value)} 
-                    />
+                    <Input id="email" value={email} onChange={(e) => setEmail(e.target.value)} />
                   </div>
-                  
                   <div className="flex justify-end pt-4">
                     <Button 
                       onClick={() => updateProfileMutation.mutate({ name, email })} 
@@ -288,176 +262,91 @@ export default function AccountPage() {
               </Card>
             )}
 
-             {/* --- TAB CONTENT: EARNINGS & PAYOUTS --- */}
+             {/* TAB: EARNINGS & PAYOUTS (UPDATED WITH STRIPE) */}
              {activeTab === "billing" && (
               <div className="space-y-6">
                 
-                {/* 1. BALANCE CARD (With Withdraw Feature) */}
-                <Card className="bg-gradient-to-br from-primary to-blue-700 text-white border-none shadow-xl">
+                {/* 1. Total Earnings */}
+                <Card className="bg-gradient-to-br from-gray-900 to-gray-800 text-white border-none shadow-xl">
                   <CardContent className="p-6">
-                    <div className="flex justify-between items-start">
+                    <div className="flex justify-between items-start mb-6">
                       <div>
-                        <p className="text-blue-100 font-medium mb-1">Available to Withdraw</p>
-                        <h2 className="text-5xl font-bold font-display tracking-tight">
-                          ${balance?.available || 0}
+                        <p className="text-gray-400 font-medium mb-1">Total Lifetime Earnings</p>
+                        <h2 className="text-4xl font-bold font-display">
+                          {earnings ? formatCurrency(earnings.total) : "..."}
                         </h2>
                       </div>
-                      
-                      {/* WITHDRAW MODAL */}
-                      <Dialog open={isWithdrawOpen} onOpenChange={setIsWithdrawOpen}>
-                        <DialogTrigger asChild>
-                          <Button variant="secondary" size="lg" className="font-bold shadow-lg">
-                            Withdraw Funds
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[425px]">
-                          <DialogHeader>
-                            <DialogTitle>Withdraw Funds</DialogTitle>
-                            <DialogDescription>
-                              Choose where you want us to send your money.
-                            </DialogDescription>
-                          </DialogHeader>
-                          
-                          <div className="grid gap-4 py-4">
-                            <div className="space-y-2">
-                              <Label>Amount ($)</Label>
-                              <Input 
-                                type="number" 
-                                placeholder="0.00" 
-                                value={withdrawAmount}
-                                onChange={(e) => setWithdrawAmount(e.target.value)}
-                                max={balance?.available}
-                              />
-                              <p className="text-xs text-muted-foreground">Max: ${balance?.available}</p>
-                            </div>
-                            
-                            <div className="space-y-2">
-                              <Label>Payout Method</Label>
-                              <Select value={withdrawMethod} onValueChange={setWithdrawMethod}>
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="venmo">Venmo ({venmo || "Not Set"})</SelectItem>
-                                  <SelectItem value="cashapp">Cash App ({cashapp || "Not Set"})</SelectItem>
-                                  <SelectItem value="debit">Debit Card (Stripe)</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-
-                          <DialogFooter>
-                            <Button onClick={() => withdrawMutation.mutate()} disabled={withdrawMutation.isPending || !withdrawAmount}>
-                              {withdrawMutation.isPending ? <Loader2 className="animate-spin mr-2" /> : null}
-                              Confirm Withdraw
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-
-                    <div className="mt-8 flex gap-6 text-sm text-blue-100">
-                      <div>
-                        <span className="opacity-70">Lifetime Earnings:</span> 
-                        <span className="font-bold ml-2">${balance?.totalEarned || 0}</span>
-                      </div>
-                      <div>
-                        <span className="opacity-70">Total Withdrawn:</span> 
-                        <span className="font-bold ml-2">${balance?.totalWithdrawn || 0}</span>
+                      <div className="p-3 bg-white/10 rounded-full">
+                        <TrendingUp className="h-6 w-6 text-green-400" />
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* 2. WITHDRAWAL HISTORY */}
+                {/* 2. STRIPE CONNECT BUTTON (THIS IS THE FIX) */}
                 <Card>
-                   <CardHeader><CardTitle>Withdrawal History</CardTitle></CardHeader>
-                   <CardContent>
-                     {!balance || balance.history.length === 0 ? (
-                       <p className="text-muted-foreground text-sm">No withdrawals yet.</p>
-                     ) : (
-                       <div className="space-y-4">
-                         {balance.history.map((tx: any) => (
-                           <div key={tx.id} className="flex justify-between items-center border-b pb-2 last:border-0">
+                  <CardHeader>
+                    <CardTitle>Payout Settings</CardTitle>
+                    <CardDescription>Link your debit card to receive earnings automatically.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {/* Show Green Check if Verified, otherwise Show Connect Button */}
+                    {(user as any).is_stripe_verified || stripeStatus?.complete ? (
+                       <div className="flex items-center gap-4 text-green-700 bg-green-50 p-4 rounded-lg border border-green-200">
+                         <div className="bg-green-200 p-2 rounded-full">
+                            <CheckCircle2 className="h-6 w-6 text-green-700" />
+                         </div>
+                         <div>
+                           <p className="font-bold">Payouts Active</p>
+                           <p className="text-sm">Your earnings will be sent to your linked bank account automatically by Stripe.</p>
+                         </div>
+                       </div>
+                    ) : (
+                       <div className="text-center space-y-4">
+                         <p className="text-sm text-muted-foreground">You must link a bank account or debit card before you can accept payments.</p>
+                         <Button 
+                           onClick={() => stripeOnboardMutation.mutate()} 
+                           disabled={stripeOnboardMutation.isPending}
+                           className="w-full bg-[#635BFF] hover:bg-[#534be0] text-white font-bold h-12" 
+                         >
+                           {stripeOnboardMutation.isPending ? "Connecting..." : "Connect with Stripe"}
+                         </Button>
+                       </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* 3. History */}
+                <Card>
+                   <CardHeader><CardTitle>Recent Transactions</CardTitle></CardHeader>
+                   <CardContent className="p-0">
+                     {earnings && earnings.history.length > 0 ? (
+                       <div className="divide-y">
+                         {earnings.history.map((tx) => (
+                           <div key={tx.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
                              <div>
-                               <p className="font-bold capitalize">{tx.method} Transfer</p>
-                               <p className="text-xs text-muted-foreground">{new Date(tx.created_at).toLocaleDateString()}</p>
+                                 <p className="font-bold text-sm">{tx.title}</p>
+                                 <p className="text-xs text-muted-foreground">Rented by {tx.renter_name}</p>
                              </div>
                              <div className="text-right">
-                               <span className="font-bold block">-${tx.amount}</span>
-                               <span className={cn(
-                                 "text-xs font-bold px-2 py-0.5 rounded-full",
-                                 tx.status === 'pending' ? "bg-yellow-100 text-yellow-700" :
-                                 tx.status === 'paid' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                               )}>
-                                 {tx.status.toUpperCase()}
-                               </span>
+                               <p className="font-bold text-green-600">+{formatCurrency(tx.total_earnings)}</p>
+                               <p className="text-xs text-muted-foreground">{new Date(tx.start_date).toLocaleDateString()}</p>
                              </div>
                            </div>
                          ))}
                        </div>
+                     ) : (
+                       <div className="p-8 text-center text-muted-foreground">
+                         <Wallet className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                         <p>No completed rentals yet.</p>
+                       </div>
                      )}
                    </CardContent>
-                </Card>
-
-                {/* 3. Payout Destination Config */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Payout Destination</CardTitle>
-                    <CardDescription>Where should students send your money?</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center gap-4 border p-4 rounded-lg bg-white">
-                      <div className="h-10 w-10 bg-[#008CFF] rounded-full flex items-center justify-center text-white font-bold text-sm">
-                        V
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <Label htmlFor="venmo" className="font-semibold text-[#008CFF]">Venmo Handle</Label>
-                        <Input 
-                          id="venmo" 
-                          className="pl-3"
-                          placeholder="@username"
-                          value={venmo}
-                          onChange={(e) => setVenmo(e.target.value)}
-                        />
-                      </div>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => updateProfileMutation.mutate({ venmo_handle: venmo })}
-                      >
-                        Save
-                      </Button>
-                    </div>
-
-                    <div className="flex items-center gap-4 border p-4 rounded-lg bg-white">
-                      <div className="h-10 w-10 bg-[#00D632] rounded-full flex items-center justify-center text-white font-bold text-sm">
-                        $
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <Label htmlFor="cashapp" className="font-semibold text-[#00D632]">CashApp Tag</Label>
-                        <Input 
-                          id="cashapp" 
-                          className="pl-3"
-                          placeholder="$cashtag"
-                          value={cashapp}
-                          onChange={(e) => setCashapp(e.target.value)}
-                        />
-                      </div>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => updateProfileMutation.mutate({ cashapp_tag: cashapp })}
-                      >
-                        Save
-                      </Button>
-                    </div>
-                  </CardContent>
                 </Card>
               </div>
             )}
 
-            {/* --- TAB CONTENT: SECURITY --- */}
+            {/* TAB: SECURITY */}
             {activeTab === "security" && (
               <div className="space-y-6">
                 <Card>
@@ -468,23 +357,12 @@ export default function AccountPage() {
                   <CardContent className="space-y-6">
                     <div className="grid gap-2">
                       <Label htmlFor="password">New Password</Label>
-                      <Input 
-                        id="password" 
-                        type="password" 
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                      />
+                      <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="confirm">Confirm Password</Label>
-                      <Input 
-                        id="confirm" 
-                        type="password" 
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                      />
+                      <Input id="confirm" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
                     </div>
-                    
                     <div className="flex justify-end pt-4">
                       <Button onClick={() => changePasswordMutation.mutate()} disabled={changePasswordMutation.isPending}>
                         Update Password
@@ -493,38 +371,27 @@ export default function AccountPage() {
                   </CardContent>
                 </Card>
 
-                {/* --- DANGER ZONE (Delete Account) --- */}
                 <Card className="border-destructive/30 bg-destructive/5">
                   <CardHeader>
                     <CardTitle className="text-destructive flex items-center gap-2">
                       <Trash2 className="h-5 w-5" /> Danger Zone
                     </CardTitle>
-                    <CardDescription>
-                      Once you delete your account, there is no going back. Please be certain.
-                    </CardDescription>
+                    <CardDescription>Once you delete your account, there is no going back.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="destructive" className="w-full sm:w-auto">
-                          Delete Account
-                        </Button>
+                        <Button variant="destructive">Delete Account</Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
                           <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete your
-                            account, listings, and all associated data.
-                          </AlertDialogDescription>
+                          <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction 
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={() => deleteMutation.mutate()}
-                          >
-                            {deleteMutation.isPending ? "Deleting..." : "Yes, delete my account"}
+                          <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={() => deleteMutation.mutate()}>
+                            Yes, delete my account
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -534,7 +401,7 @@ export default function AccountPage() {
               </div>
             )}
 
-            {/* LOG OUT (Always Visible at bottom) */}
+            {/* LOG OUT */}
             <Card className="border-red-100 bg-red-50/50 mt-8">
               <CardContent className="p-6 flex items-center justify-between">
                 <div>
