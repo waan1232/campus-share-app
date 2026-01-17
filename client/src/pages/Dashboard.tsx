@@ -18,6 +18,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Item } from "@shared/schema";
+// --- NEW IMPORT ---
+import { PayButton } from "@/components/PayButton";
 
 
 export default function Dashboard() {
@@ -287,27 +289,43 @@ export default function Dashboard() {
           </div>
         ) : (
           myRentals.map(rental => (
-            <Card key={rental.id} className="overflow-hidden">
-              <div className="h-32 w-full overflow-hidden relative">
-                <img 
-                  src={rental.item.imageUrl} 
-                  alt={rental.item.title} 
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute top-2 right-2">
-                  <StatusBadge status={rental.status} />
+            <Card key={rental.id} className="overflow-hidden flex flex-col justify-between">
+              <div>
+                <div className="h-32 w-full overflow-hidden relative">
+                    <img 
+                    src={rental.item.imageUrl} 
+                    alt={rental.item.title} 
+                    className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2 right-2">
+                    <StatusBadge status={rental.status} />
+                    </div>
                 </div>
+                <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-base line-clamp-1">{rental.item.title}</CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 pt-0 text-sm">
+                    <div className="flex justify-between items-center mt-2">
+                    <span className="text-muted-foreground">
+                        {format(new Date(rental.startDate), "MMM d")} - {format(new Date(rental.endDate), "MMM d")}
+                    </span>
+                    </div>
+                </CardContent>
               </div>
-              <CardHeader className="p-4 pb-2">
-                <CardTitle className="text-base line-clamp-1">{rental.item.title}</CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 pt-0 text-sm">
-                <div className="flex justify-between items-center mt-2">
-                  <span className="text-muted-foreground">
-                    {format(new Date(rental.startDate), "MMM d")} - {format(new Date(rental.endDate), "MMM d")}
-                  </span>
-                </div>
-              </CardContent>
+
+              {/* --- PAY BUTTON LOGIC --- */}
+              {rental.status === 'approved' && (
+                <CardFooter className="p-4 pt-0">
+                    <PayButton 
+                        rentalId={rental.id}
+                        title={rental.item.title}
+                        pricePerDay={rental.item.pricePerDay}
+                        days={Math.max(1, Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)))}
+                        imageUrl={rental.item.imageUrl}
+                        ownerId={rental.item.ownerId}
+                    />
+                </CardFooter>
+              )}
             </Card>
           ))
         )}
