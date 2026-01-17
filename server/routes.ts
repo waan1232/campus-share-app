@@ -11,34 +11,6 @@ import path from "path";
 import express from "express";
 import fs from "fs";
 
-// --- SCHOOL VERIFICATION LOGIC ---
-const SCHOOL_DOMAINS: Record<string, string> = {
-  'purdue.edu': 'Purdue University',
-  'bowdoin.edu': 'Bowdoin College',
-  'gvsu.edu': 'Grand Valley State University',
-  'wmich.edu': 'Western Michigan University',
-  'umich.edu': 'University of Michigan',
-  'msu.edu': 'Michigan State University',
-  'wayne.edu': 'Wayne State University',
-  'indiana.edu': 'Indiana University',
-  'nd.edu': 'University of Notre Dame'
-};
-
-function getSchoolFromEmail(email: string): string {
-  if (!email || !email.includes('@')) return 'General Public';
-  const domain = email.split('@')[1];
-  
-  // Check exact match
-  if (SCHOOL_DOMAINS[domain]) return SCHOOL_DOMAINS[domain];
-
-  // Check subdomains (e.g. student.purdue.edu)
-  for (const key in SCHOOL_DOMAINS) {
-    if (domain.endsWith(key)) return SCHOOL_DOMAINS[key];
-  }
-
-  return 'General Public';
-}
-
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -93,6 +65,10 @@ export async function registerRoutes(
       ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS location TEXT;
 
+      -- NEW: Verification Columns
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code TEXT;
+
       -- New Columns for Bargaining
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS item_id INTEGER REFERENCES items(id);
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS offer_price INTEGER;
@@ -101,26 +77,25 @@ export async function registerRoutes(
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS end_date TIMESTAMP;
     `);
     
-    // BACKFILL SCHOOLS FOR EXISTING USERS
-    // This ensures old users get assigned to their school based on email
-    await pool.query(`
-      UPDATE users 
-      SET school = CASE 
-        WHEN email LIKE '%purdue.edu' THEN 'Purdue University'
-        WHEN email LIKE '%bowdoin.edu' THEN 'Bowdoin College'
-        WHEN email LIKE '%gvsu.edu' THEN 'Grand Valley State University'
-        WHEN email LIKE '%wmich.edu' THEN 'Western Michigan University'
-        WHEN email LIKE '%umich.edu' THEN 'University of Michigan'
-        WHEN email LIKE '%msu.edu' THEN 'Michigan State University'
-        ELSE 'General Public'
-      END
-      WHERE school IS NULL OR school = 'General Public';
-    `);
-
-    console.log("Database schema verified (School Filters Active).");
+    console.log("Database schema verified (Verification System Active).");
   } catch (err) {
     console.error("Error updating schema:", err);
   }
+
+  // --- NEW: VERIFY ACCOUNT ROUTE ---
+  app.post("/api/verify-account", async (req, res) => {
+      if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+      const { code } = req.body;
+      
+      // Call storage to check the code
+      const success = await storage.verifyUser((req.user as any).id, code);
+      
+      if (success) {
+          res.sendStatus(200);
+      } else {
+          res.status(400).json({ message: "Invalid verification code" });
+      }
+  });
 
   // --- ACCOUNT ROUTES ---
   app.patch("/api/user", async (req, res) => {
@@ -128,11 +103,8 @@ export async function registerRoutes(
     const userId = (req.user as any).id;
     const { name, email, bio, location, venmo_handle, cashapp_tag } = req.body; 
 
-    // If email is changing, we must re-calculate the school
-    let newSchool = undefined;
-    if (email) {
-        newSchool = getSchoolFromEmail(email);
-    }
+    // Note: If email changes, school/verification might need reset logic in future.
+    // For now, we update profile fields.
 
     try {
       const result = await pool.query(
@@ -142,11 +114,10 @@ export async function registerRoutes(
              bio = COALESCE($3, bio),
              location = COALESCE($4, location),
              venmo_handle = COALESCE($5, venmo_handle),
-             cashapp_tag = COALESCE($6, cashapp_tag),
-             school = COALESCE($7, school)
-         WHERE id = $8 
-         RETURNING id, username, name, email, bio, location, venmo_handle, cashapp_tag, school`,
-        [name, email, bio, location, venmo_handle, cashapp_tag, newSchool, userId]
+             cashapp_tag = COALESCE($6, cashapp_tag)
+         WHERE id = $7 
+         RETURNING id, username, name, email, bio, location, venmo_handle, cashapp_tag, school, is_verified`,
+        [name, email, bio, location, venmo_handle, cashapp_tag, userId]
       );
       res.json(result.rows[0]);
     } catch (error) {
@@ -210,19 +181,16 @@ export async function registerRoutes(
     }
   });
 
-  // --- ITEM ROUTES (UPDATED WITH SCHOOL FILTER) ---
+  // --- ITEM ROUTES (UPDATED FOR GATEKEEPER) ---
   app.get(api.items.list.path, async (req, res) => {
     const search = req.query.search as string | undefined;
     const category = req.query.category as string | undefined;
     
-    // DETECT USER SCHOOL
-    let userSchool = undefined;
-    if (req.isAuthenticated()) {
-        userSchool = (req.user as any).school;
-    }
+    // PASS THE FULL USER OBJECT so storage can check isVerified & school
+    const user = req.isAuthenticated() ? (req.user as any) : undefined;
 
-    // Pass the school to storage to filter items
-    const items = await storage.getItems({ search, category, school: userSchool });
+    // The storage engine now decides what to show based on the user
+    const items = await storage.getItems(user, { search, category });
     res.json(items);
   });
 
@@ -454,13 +422,17 @@ async function seedDatabase() {
         return `${buf.toString("hex")}.${salt}`;
     }
     const pwd = await hash("password123");
+    // Ensure admin user is verified so they can see items
     user = await storage.createUser({ 
         username: "campus_admin", 
         password: pwd, 
         name: "Admin User", 
         email: "admin@college.edu",
-        school: "General Public" // Default school
     });
+    // Manually verify admin
+    if(user) {
+        await pool.query(`UPDATE users SET is_verified = TRUE WHERE id = $1`, [user.id]);
+    }
   }
 
   const itemsToSeed = [
