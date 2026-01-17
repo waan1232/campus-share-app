@@ -1,9 +1,9 @@
-import { Switch, Route, useLocation } from "wouter"; // Added useLocation
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider, useAuth } from "@/hooks/use-auth"; // Import useAuth
+import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import NotFound from "@/pages/not-found";
 
@@ -13,14 +13,13 @@ import AuthPage from "@/pages/Auth";
 import Marketplace from "@/pages/Marketplace";
 import ItemDetail from "@/pages/ItemDetail";
 import PostItem from "@/pages/PostItem";
-import Dashboard from "@/pages/Dashboard";
+import Dashboard from "@/pages/Dashboard"; // Only import this if you have the file
 import About from "@/pages/About";
 import InboxPage from "@/pages/inbox";
 import AccountPage from "@/pages/Account";
-import VerifyPage from "@/pages/verify"; // Import New Page
+import VerifyPage from "@/pages/verify";
 
 // --- THE GUARD COMPONENT ---
-// This handles the "Jail" logic
 function VerifiedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -56,23 +55,25 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <Route path="/about" component={About} />
       
-      {/* Login/Register Redirects */}
-      <Route path="/login" component={AuthPage} />
-      <Route path="/register" component={AuthPage} />
+      {/* --- FIX IS HERE: Explicitly pass the mode prop --- */}
+      <Route path="/login">
+        <AuthPage mode="login" />
+      </Route>
+      <Route path="/register">
+        <AuthPage mode="register" />
+      </Route>
 
       {/* THE JAIL ROUTE */}
       <Route path="/verify" component={VerifyPage} />
 
-      {/* --- PROTECTED ROUTES (Wrapped in VerifiedRoute) --- */}
-      {/* These are now inaccessible unless isVerified = true */}
-      
+      {/* --- PROTECTED ROUTES --- */}
       <Route path="/">
          {() => <VerifiedRoute component={Home} />}
       </Route>
       
       <Route path="/dashboard">
+         {/* If you have a dedicated Dashboard.tsx, swap 'Home' for 'Dashboard' below */}
          {() => <VerifiedRoute component={Home} />} 
-         {/* Mapping /dashboard to Home as per your previous request */}
       </Route>
 
       <Route path="/items">
