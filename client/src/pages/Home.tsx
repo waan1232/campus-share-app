@@ -42,7 +42,7 @@ export default function Home() {
     },
     {
       name: "Sports",
-      image: "https://unsplash.com/photos/aerial-photography-of-baseball-stadium-VvQSzMJ_h0U" // Stadium
+      image: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=800" // Stadium
     }
   ];
 
