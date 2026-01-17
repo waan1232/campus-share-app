@@ -11,8 +11,7 @@ import path from "path";
 import express from "express";
 import fs from "fs";
 
-
-// Define known schools
+// --- SCHOOL VERIFICATION LOGIC ---
 const SCHOOL_DOMAINS: Record<string, string> = {
   'purdue.edu': 'Purdue University',
   'bowdoin.edu': 'Bowdoin College',
@@ -20,17 +19,19 @@ const SCHOOL_DOMAINS: Record<string, string> = {
   'wmich.edu': 'Western Michigan University',
   'umich.edu': 'University of Michigan',
   'msu.edu': 'Michigan State University',
-  'wayne.edu': 'Wayne State University'
+  'wayne.edu': 'Wayne State University',
+  'indiana.edu': 'Indiana University',
+  'nd.edu': 'University of Notre Dame'
 };
 
 function getSchoolFromEmail(email: string): string {
+  if (!email || !email.includes('@')) return 'General Public';
   const domain = email.split('@')[1];
-  if (!domain) return 'General Public';
   
-  // Check exact match (purdue.edu)
+  // Check exact match
   if (SCHOOL_DOMAINS[domain]) return SCHOOL_DOMAINS[domain];
 
-  // Check subdomains (student.purdue.edu)
+  // Check subdomains (e.g. student.purdue.edu)
   for (const key in SCHOOL_DOMAINS) {
     if (domain.endsWith(key)) return SCHOOL_DOMAINS[key];
   }
@@ -85,7 +86,8 @@ export async function registerRoutes(
         read BOOLEAN DEFAULT FALSE
       );
       
-      -- Add Profile, Payment & NEW OFFER Columns
+      -- Add School, Profile, Payment & Offer Columns
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS school TEXT DEFAULT 'General Public';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS venmo_handle TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS cashapp_tag TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
@@ -93,12 +95,29 @@ export async function registerRoutes(
 
       -- New Columns for Bargaining
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS item_id INTEGER REFERENCES items(id);
-      ALTER TABLE messages ADD COLUMN IF NOT EXISTS offer_price INTEGER; -- Price in cents
-      ALTER TABLE messages ADD COLUMN IF NOT EXISTS offer_status TEXT DEFAULT 'none'; -- 'pending', 'accepted', 'rejected'
-      ALTER TABLE messages ADD COLUMN IF NOT EXISTS start_date TIMESTAMP; -- NEW
-      ALTER TABLE messages ADD COLUMN IF NOT EXISTS end_date TIMESTAMP;   -- NEW
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS offer_price INTEGER;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS offer_status TEXT DEFAULT 'none';
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS start_date TIMESTAMP;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS end_date TIMESTAMP;
     `);
-    console.log("Database schema verified (Offers & Dates enabled).");
+    
+    // BACKFILL SCHOOLS FOR EXISTING USERS
+    // This ensures old users get assigned to their school based on email
+    await pool.query(`
+      UPDATE users 
+      SET school = CASE 
+        WHEN email LIKE '%purdue.edu' THEN 'Purdue University'
+        WHEN email LIKE '%bowdoin.edu' THEN 'Bowdoin College'
+        WHEN email LIKE '%gvsu.edu' THEN 'Grand Valley State University'
+        WHEN email LIKE '%wmich.edu' THEN 'Western Michigan University'
+        WHEN email LIKE '%umich.edu' THEN 'University of Michigan'
+        WHEN email LIKE '%msu.edu' THEN 'Michigan State University'
+        ELSE 'General Public'
+      END
+      WHERE school IS NULL OR school = 'General Public';
+    `);
+
+    console.log("Database schema verified (School Filters Active).");
   } catch (err) {
     console.error("Error updating schema:", err);
   }
@@ -109,6 +128,12 @@ export async function registerRoutes(
     const userId = (req.user as any).id;
     const { name, email, bio, location, venmo_handle, cashapp_tag } = req.body; 
 
+    // If email is changing, we must re-calculate the school
+    let newSchool = undefined;
+    if (email) {
+        newSchool = getSchoolFromEmail(email);
+    }
+
     try {
       const result = await pool.query(
         `UPDATE users 
@@ -117,10 +142,11 @@ export async function registerRoutes(
              bio = COALESCE($3, bio),
              location = COALESCE($4, location),
              venmo_handle = COALESCE($5, venmo_handle),
-             cashapp_tag = COALESCE($6, cashapp_tag)
-         WHERE id = $7 
-         RETURNING id, username, name, email, bio, location, venmo_handle, cashapp_tag`,
-        [name, email, bio, location, venmo_handle, cashapp_tag, userId]
+             cashapp_tag = COALESCE($6, cashapp_tag),
+             school = COALESCE($7, school)
+         WHERE id = $8 
+         RETURNING id, username, name, email, bio, location, venmo_handle, cashapp_tag, school`,
+        [name, email, bio, location, venmo_handle, cashapp_tag, newSchool, userId]
       );
       res.json(result.rows[0]);
     } catch (error) {
@@ -134,8 +160,6 @@ export async function registerRoutes(
     const userId = (req.user as any).id;
 
     try {
-      // Find all rentals for items OWNED by this user
-      // We join Rentals -> Items to check ownership
       const result = await pool.query(
         `SELECT r.*, i.title, i.price_per_day, i.image_url,
                 u.username as renter_name
@@ -147,10 +171,9 @@ export async function registerRoutes(
         [userId]
       );
 
-      // Calculate totals in JavaScript for simplicity
       const rentals = result.rows.map(row => {
         const days = Math.ceil((new Date(row.end_date).getTime() - new Date(row.start_date).getTime()) / (1000 * 60 * 60 * 24));
-        const total = (row.price_per_day * days); // in cents
+        const total = (row.price_per_day * days); 
         return { ...row, total_earnings: total, days };
       });
 
@@ -187,11 +210,19 @@ export async function registerRoutes(
     }
   });
 
-  // --- ITEM ROUTES ---
+  // --- ITEM ROUTES (UPDATED WITH SCHOOL FILTER) ---
   app.get(api.items.list.path, async (req, res) => {
     const search = req.query.search as string | undefined;
     const category = req.query.category as string | undefined;
-    const items = await storage.getItems({ search, category });
+    
+    // DETECT USER SCHOOL
+    let userSchool = undefined;
+    if (req.isAuthenticated()) {
+        userSchool = (req.user as any).school;
+    }
+
+    // Pass the school to storage to filter items
+    const items = await storage.getItems({ search, category, school: userSchool });
     res.json(items);
   });
 
@@ -423,7 +454,13 @@ async function seedDatabase() {
         return `${buf.toString("hex")}.${salt}`;
     }
     const pwd = await hash("password123");
-    user = await storage.createUser({ username: "campus_admin", password: pwd, name: "Admin User", email: "admin@college.edu" });
+    user = await storage.createUser({ 
+        username: "campus_admin", 
+        password: pwd, 
+        name: "Admin User", 
+        email: "admin@college.edu",
+        school: "General Public" // Default school
+    });
   }
 
   const itemsToSeed = [
