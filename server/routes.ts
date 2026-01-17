@@ -10,7 +10,13 @@ import multer from "multer";
 import path from "path";
 import express from "express";
 import fs from "fs";
-import { sendVerificationEmail } from "./mailer"; // Import mailer for resend logic
+import { sendVerificationEmail } from "./mailer"; 
+import Stripe from "stripe"; // <--- NEW IMPORT
+
+// Initialize Stripe
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+  apiVersion: "2025-01-27.acacia", // Use latest version available
+});
 
 export async function registerRoutes(
   httpServer: Server,
@@ -76,12 +82,133 @@ export async function registerRoutes(
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS offer_status TEXT DEFAULT 'none';
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS start_date TIMESTAMP;
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS end_date TIMESTAMP;
+
+      -- NEW: Withdrawal Table
+      CREATE TABLE IF NOT EXISTS withdrawals (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
+        amount INTEGER NOT NULL,
+        method TEXT NOT NULL,
+        details TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
     `);
     
-    console.log("Database schema verified (Verification System Active).");
+    console.log("Database schema verified (Verification & Withdrawals Active).");
   } catch (err) {
     console.error("Error updating schema:", err);
   }
+
+  // --- STRIPE CHECKOUT ROUTE ---
+  app.post("/api/create-checkout-session", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    
+    const { rentalId, title, price, days, image } = req.body;
+    
+    // Calculate total amount (Stripe uses cents, so $10.00 = 1000)
+    const amountInCents = Math.round(price * days * 100); 
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: `Rental: ${title}`,
+                description: `Renting for ${days} days`,
+                images: image ? [image] : [], 
+              },
+              unit_amount: amountInCents,
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        // Make sure BASE_URL is set in .env, otherwise fallback to localhost
+        success_url: `${process.env.BASE_URL || 'http://localhost:5000'}/dashboard?payment=success&rentalId=${rentalId}`,
+        cancel_url: `${process.env.BASE_URL || 'http://localhost:5000'}/dashboard?payment=cancelled`,
+        metadata: {
+          rentalId: rentalId.toString(),
+          userId: (req.user as any).id.toString()
+        }
+      });
+
+      res.json({ url: session.url });
+    } catch (error: any) {
+      console.error("Stripe Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // --- GET BALANCE & HISTORY ---
+  app.get("/api/balance", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    const userId = (req.user as any).id;
+
+    try {
+      // 1. Calculate Total Earnings (from Rentals)
+      const earningsResult = await pool.query(
+        `SELECT r.start_date, r.end_date, i.price_per_day
+         FROM rentals r
+         JOIN items i ON r.item_id = i.id
+         WHERE i.owner_id = $1`,
+        [userId]
+      );
+      
+      let totalEarned = 0;
+      earningsResult.rows.forEach(row => {
+         const days = Math.ceil((new Date(row.end_date).getTime() - new Date(row.start_date).getTime()) / (1000 * 60 * 60 * 24));
+         totalEarned += (row.price_per_day * days);
+      });
+
+      // 2. Calculate Total Withdrawn
+      const withdrawResult = await pool.query(
+        `SELECT SUM(amount) as total_withdrawn FROM withdrawals WHERE user_id = $1 AND status != 'rejected'`,
+        [userId]
+      );
+      const totalWithdrawn = parseInt(withdrawResult.rows[0].total_withdrawn || '0');
+
+      // 3. Available Balance
+      const available = totalEarned - totalWithdrawn;
+
+      // 4. Get recent withdrawal history
+      const historyResult = await pool.query(
+        `SELECT * FROM withdrawals WHERE user_id = $1 ORDER BY created_at DESC`,
+        [userId]
+      );
+
+      res.json({ 
+        totalEarned, 
+        totalWithdrawn, 
+        available, 
+        history: historyResult.rows 
+      });
+    } catch (error) {
+      console.error("Balance error:", error);
+      res.status(500).json({ error: "Failed to calculate balance" });
+    }
+  });
+
+  // --- REQUEST WITHDRAWAL ---
+  app.post("/api/withdraw", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    const userId = (req.user as any).id;
+    const { amount, method, details } = req.body;
+
+    try {
+      await pool.query(
+        `INSERT INTO withdrawals (user_id, amount, method, details, status) VALUES ($1, $2, $3, $4, 'pending')`,
+        [userId, amount, method, details]
+      );
+      res.sendStatus(200);
+    } catch (error) {
+      console.error("Withdraw error:", error);
+      res.status(500).json({ error: "Withdrawal failed" });
+    }
+  });
 
   // --- VERIFICATION ROUTES ---
 
@@ -99,7 +226,7 @@ export async function registerRoutes(
       }
   });
 
-  // 2. Resend Verification Code (NEW)
+  // 2. Resend Verification Code
   app.post("/api/resend-verification", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const user = req.user as any;
@@ -122,7 +249,7 @@ export async function registerRoutes(
     }
   });
 
-  // 3. Manual Logout (For users stuck in verify screen)
+  // 3. Manual Logout
   app.post("/api/auth/logout", (req, res, next) => {
     req.logout((err) => {
       if (err) return next(err);
@@ -155,7 +282,7 @@ export async function registerRoutes(
     }
   });
 
-  // DELETE ACCOUNT (With Cascade Fix)
+  // DELETE ACCOUNT
   app.delete("/api/user", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
