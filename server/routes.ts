@@ -11,7 +11,6 @@ import path from "path";
 import express from "express";
 import fs from "fs";
 
-
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -101,7 +100,8 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to update profile" });
     }
   });
-// --- EARNINGS ROUTE ---
+
+  // --- EARNINGS ROUTE ---
   app.get("/api/earnings", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
@@ -135,6 +135,7 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to fetch earnings" });
     }
   });
+
   app.patch("/api/user/password", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
