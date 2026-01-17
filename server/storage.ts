@@ -74,15 +74,24 @@ export class DatabaseStorage implements IStorage {
     }
 
     // 3. School Filter (The new Logic)
+    // 3. School Filter (STRICT MODE)
+    // If a school is provided (Logged In), show items from that school.
     if (filters?.school) {
-        // Find all users who belong to this school
         const ownersAtSchool = db
             .select({ id: users.id })
             .from(users)
             .where(eq(users.school, filters.school));
         
-        // Only show items owned by those users
         conditions.push(inArray(items.ownerId, ownersAtSchool));
+    } 
+    // If NO school is provided (Logged Out), ONLY show "General Public" items
+    else {
+        const publicOwners = db
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.school, 'General Public'));
+
+        conditions.push(inArray(items.ownerId, publicOwners));
     }
 
     // Build Query
