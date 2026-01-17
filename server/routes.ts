@@ -11,6 +11,33 @@ import path from "path";
 import express from "express";
 import fs from "fs";
 
+
+// Define known schools
+const SCHOOL_DOMAINS: Record<string, string> = {
+  'purdue.edu': 'Purdue University',
+  'bowdoin.edu': 'Bowdoin College',
+  'gvsu.edu': 'Grand Valley State University',
+  'wmich.edu': 'Western Michigan University',
+  'umich.edu': 'University of Michigan',
+  'msu.edu': 'Michigan State University',
+  'wayne.edu': 'Wayne State University'
+};
+
+function getSchoolFromEmail(email: string): string {
+  const domain = email.split('@')[1];
+  if (!domain) return 'General Public';
+  
+  // Check exact match (purdue.edu)
+  if (SCHOOL_DOMAINS[domain]) return SCHOOL_DOMAINS[domain];
+
+  // Check subdomains (student.purdue.edu)
+  for (const key in SCHOOL_DOMAINS) {
+    if (domain.endsWith(key)) return SCHOOL_DOMAINS[key];
+  }
+
+  return 'General Public';
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
