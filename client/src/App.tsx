@@ -1,9 +1,10 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter"; // Added useLocation
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/hooks/use-auth";
+import { AuthProvider, useAuth } from "@/hooks/use-auth"; // Import useAuth
+import { Loader2 } from "lucide-react";
 import NotFound from "@/pages/not-found";
 
 // Pages
@@ -14,41 +15,86 @@ import ItemDetail from "@/pages/ItemDetail";
 import PostItem from "@/pages/PostItem";
 import Dashboard from "@/pages/Dashboard";
 import About from "@/pages/About";
-import InboxPage from "@/pages/inbox"; // Ensure this matches your file name exactly
+import InboxPage from "@/pages/inbox";
 import AccountPage from "@/pages/Account";
+import VerifyPage from "@/pages/verify"; // Import New Page
+
+// --- THE GUARD COMPONENT ---
+// This handles the "Jail" logic
+function VerifiedRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // 1. Not Logged In -> Go to Auth
+  if (!user) {
+    setLocation("/auth");
+    return null;
+  }
+
+  // 2. Logged In BUT Not Verified -> Go to Jail
+  if (!user.isVerified) {
+    setLocation("/verify");
+    return null;
+  }
+
+  // 3. Allowed -> Show Page
+  return <Component />;
+}
 
 function Router() {
   return (
     <Switch>
-      {/* 1. Public & Static Routes */}
-      <Route path="/" component={Home} />
+      {/* Public Routes */}
       <Route path="/auth" component={AuthPage} />
       <Route path="/about" component={About} />
       
-      <Route path="/login">
-        {() => <AuthPage mode="login" />}
-      </Route>
-      <Route path="/register">
-        {() => <AuthPage mode="register" />}
-      </Route>
+      {/* Login/Register Redirects */}
+      <Route path="/login" component={AuthPage} />
+      <Route path="/register" component={AuthPage} />
 
-      {/* 2. User Dashboard & Settings */}
-      <Route path="/dashboard" component={Dashboard} />
-      <Route path="/account" component={AccountPage} />
+      {/* THE JAIL ROUTE */}
+      <Route path="/verify" component={VerifyPage} />
+
+      {/* --- PROTECTED ROUTES (Wrapped in VerifiedRoute) --- */}
+      {/* These are now inaccessible unless isVerified = true */}
       
-      {/* 3. Messaging (The Missing Links) */}
-      <Route path="/inbox" component={InboxPage} />
-      <Route path="/messages" component={InboxPage} />
-
-      {/* 4. Marketplace Routes (ORDER MATTERS!) */}
-      <Route path="/items" component={Marketplace} />
+      <Route path="/">
+         {() => <VerifiedRoute component={Home} />}
+      </Route>
       
-      {/* Specific routes like 'new' must come BEFORE dynamic routes like ':id' */}
-      <Route path="/items/new" component={PostItem} />
-      <Route path="/items/edit/:id" component={PostItem} />
-      <Route path="/items/:id" component={ItemDetail} />
+      <Route path="/dashboard">
+         {() => <VerifiedRoute component={Home} />} 
+         {/* Mapping /dashboard to Home as per your previous request */}
+      </Route>
 
-      {/* 5. 404 Catch-all */}
+      <Route path="/items">
+         {() => <VerifiedRoute component={Marketplace} />}
+      </Route>
+
+      <Route path="/items/new">
+         {() => <VerifiedRoute component={PostItem} />}
+      </Route>
+
+      <Route path="/items/:id">
+         {() => <VerifiedRoute component={ItemDetail} />}
+      </Route>
+
+      <Route path="/account">
+         {() => <VerifiedRoute component={AccountPage} />}
+      </Route>
+
+      <Route path="/inbox">
+         {() => <VerifiedRoute component={InboxPage} />}
+      </Route>
+
       <Route component={NotFound} />
     </Switch>
   );
