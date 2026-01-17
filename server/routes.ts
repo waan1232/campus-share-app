@@ -109,12 +109,7 @@ export async function registerRoutes(
   // ==========================================
 
   // 1. ONBOARDING
-  app.post("/api/stripe/onboard", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
-    const user = req.user as any;
-
-    try {
-      let accountId = user.stripe_account_id; 
+ // ... inside the /api/stripe/onboard route ...
 
       // Create account if not exists
       if (!accountId) {
@@ -122,30 +117,26 @@ export async function registerRoutes(
           type: "express",
           country: "US",
           email: user.email,
+          
+          // 1. FORCE "INDIVIDUAL" (Removes the Business Type question)
+          business_type: "individual", 
+          
+          // 2. PRE-FILL DATA (Skips Name/Email entry steps)
+          individual: {
+             email: user.email,
+             first_name: user.name.split(" ")[0],
+             last_name: user.name.split(" ").slice(1).join(" ") || "", // Handles users with one name
+          },
+
           capabilities: {
             card_payments: { requested: true },
             transfers: { requested: true },
           },
         });
+        
         accountId = account.id;
-        // Save to DB immediately
         await pool.query(`UPDATE users SET stripe_account_id = $1 WHERE id = $2`, [accountId, user.id]);
       }
-
-      // Create the Account Link (The URL Stripe sends back)
-      const accountLink = await stripe.accountLinks.create({
-        account: accountId,
-        refresh_url: `${process.env.BASE_URL || 'http://localhost:5000'}/account`,
-        return_url: `${process.env.BASE_URL || 'http://localhost:5000'}/account?stripe=success`,
-        type: "account_onboarding",
-      });
-
-      res.json({ url: accountLink.url });
-    } catch (error: any) {
-      console.error("Stripe Onboarding Error:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
 
   // 2. CHECK STATUS
   app.get("/api/stripe/check-status", async (req, res) => {
