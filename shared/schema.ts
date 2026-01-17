@@ -9,7 +9,7 @@ export const users = pgTable("users", {
   name: text("name"),
   email: text("email"),
   
-  // --- NEW COLUMNS ---
+  // Profile Columns
   school: text("school").default('General Public'),
   bio: text("bio"),
   location: text("location"),
@@ -23,7 +23,7 @@ export const items = pgTable("items", {
   title: text("title").notNull(),
   description: text("description").notNull(),
   category: text("category").notNull(),
-  pricePerDay: integer("price_per_day").notNull(), // stored in cents
+  pricePerDay: integer("price_per_day").notNull(),
   imageUrl: text("image_url"),
   isAvailable: boolean("is_available").default(true).notNull(),
   condition: text("condition").default("Good"),
@@ -37,28 +37,27 @@ export const rentals = pgTable("rentals", {
   renterId: integer("renter_id").notNull(),
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date").notNull(),
-  status: text("status").default("pending").notNull(), // pending, approved, rejected, completed, unavailable_block
+  status: text("status").default("pending").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// --- FIX: USE CAMELCASE FOR DB COLUMNS TO MATCH YOUR EXISTING DATABASE ---
 export const favorites = pgTable("favorites", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  itemId: integer("item_id").notNull(),
+  userId: integer("userId").notNull(), // Changed from user_id
+  itemId: integer("itemId").notNull(), // Changed from item_id
 });
 
-// --- NEW MESSAGES TABLE ---
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   senderId: integer("sender_id").notNull(),
   receiverId: integer("receiver_id").notNull(),
   content: text("content").notNull(),
-  rentalId: integer("rental_id"), // Optional: link to a specific rental
-  itemId: integer("item_id"),     // Optional: link to a specific item context
+  rentalId: integer("rental_id"),
+  itemId: integer("item_id"),
   
-  // Offer / Bargaining Columns
-  offerPrice: integer("offer_price"), // If they make a cash offer
-  offerStatus: text("offer_status").default('none'), // pending, accepted, rejected
+  offerPrice: integer("offer_price"),
+  offerStatus: text("offer_status").default('none'),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
 
@@ -67,14 +66,16 @@ export const messages = pgTable("messages", {
 });
 
 // --- ZOD SCHEMAS ---
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
   name: true,
   email: true,
-  school: true, // Allow school to be inserted
+  school: true,
 });
 
+// --- FIX: ALLOW EMPTY IMAGE URLS ---
 export const insertItemSchema = createInsertSchema(items).pick({
   title: true,
   description: true,
@@ -83,6 +84,9 @@ export const insertItemSchema = createInsertSchema(items).pick({
   imageUrl: true,
   condition: true,
   location: true,
+}).extend({
+  // Make imageUrl optional and allow empty strings to prevent the "pattern" error
+  imageUrl: z.string().optional().or(z.literal('')), 
 });
 
 export const insertRentalSchema = createInsertSchema(rentals).pick({
