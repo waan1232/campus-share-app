@@ -105,6 +105,29 @@ export const insertMessageSchema = createInsertSchema(messages).pick({
   endDate: true,
 });
 
+// ... existing imports
+import { pgTable, text, serial, integer, boolean, timestamp, foreignKey } from "drizzle-orm/pg-core";
+
+// ... existing tables (users, items, etc)
+
+export const withdrawals = pgTable("withdrawals", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  amount: integer("amount").notNull(), // stored in cents (e.g. 5000 = $50.00)
+  method: text("method").notNull(), // 'venmo', 'cashapp', 'debit'
+  details: text("details").notNull(), // The username/tag/card last4
+  status: text("status").default("pending").notNull(), // 'pending', 'paid', 'rejected'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertWithdrawalSchema = createInsertSchema(withdrawals).pick({
+  amount: true,
+  method: true,
+  details: true,
+});
+
+export type Withdrawal = typeof withdrawals.$inferSelect;
+export type InsertWithdrawal = z.infer<typeof insertWithdrawalSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Item = typeof items.$inferSelect;
