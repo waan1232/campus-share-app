@@ -7,10 +7,14 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   name: text("name"),
-  email: text("email"),
+  email: text("email").notNull(), // Email is now mandatory
   
-  // Profile Columns
-  school: text("school").default('General Public'),
+  // --- VERIFICATION & SCHOOL ---
+  school: text("school"), // e.g., "purdue.edu"
+  isVerified: boolean("is_verified").default(false),
+  verificationCode: text("verification_code"),
+  
+  // Profile
   bio: text("bio"),
   location: text("location"),
   venmo_handle: text("venmo_handle"),
@@ -41,11 +45,10 @@ export const rentals = pgTable("rentals", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// --- FIX: USE CAMELCASE FOR DB COLUMNS TO MATCH YOUR EXISTING DATABASE ---
 export const favorites = pgTable("favorites", {
   id: serial("id").primaryKey(),
-  userId: integer("userId").notNull(), // Changed from user_id
-  itemId: integer("itemId").notNull(), // Changed from item_id
+  userId: integer("userId").notNull(),
+  itemId: integer("itemId").notNull(),
 });
 
 export const messages = pgTable("messages", {
@@ -55,27 +58,25 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   rentalId: integer("rental_id"),
   itemId: integer("item_id"),
-  
   offerPrice: integer("offer_price"),
   offerStatus: text("offer_status").default('none'),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
-
   sentAt: timestamp("sent_at").defaultNow(),
   read: boolean("read").default(false),
 });
 
 // --- ZOD SCHEMAS ---
-
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
   name: true,
   email: true,
-  school: true,
+}).extend({
+  // Email must be .edu
+  email: z.string().email().refine(e => e.endsWith(".edu"), "Must be a valid .edu email"),
 });
 
-// --- FIX: ALLOW EMPTY IMAGE URLS ---
 export const insertItemSchema = createInsertSchema(items).pick({
   title: true,
   description: true,
@@ -85,7 +86,6 @@ export const insertItemSchema = createInsertSchema(items).pick({
   condition: true,
   location: true,
 }).extend({
-  // Make imageUrl optional and allow empty strings to prevent the "pattern" error
   imageUrl: z.string().optional().or(z.literal('')), 
 });
 
@@ -105,12 +105,7 @@ export const insertMessageSchema = createInsertSchema(messages).pick({
   endDate: true,
 });
 
-// Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Item = typeof items.$inferSelect;
 export type InsertItem = z.infer<typeof insertItemSchema>;
-export type Rental = typeof rentals.$inferSelect;
-export type InsertRental = z.infer<typeof insertRentalSchema>;
-export type Message = typeof messages.$inferSelect;
-export type InsertMessage = z.infer<typeof insertMessageSchema>;
