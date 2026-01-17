@@ -193,23 +193,59 @@ export async function registerRoutes(
   });
 
   // --- REQUEST WITHDRAWAL ---
+  // --- REQUEST WITHDRAWAL (WITH BALANCE CHECK) ---
   app.post("/api/withdraw", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
     const { amount, method, details } = req.body;
 
+    // 1. Validate Amount
+    if (!amount || amount <= 0) {
+        return res.status(400).json({ message: "Invalid amount" });
+    }
+
     try {
+      // 2. RE-CALCULATE BALANCE (Server-Side Security)
+      // Calculate Total Earnings
+      const earningsResult = await pool.query(
+        `SELECT r.start_date, r.end_date, i.price_per_day
+         FROM rentals r
+         JOIN items i ON r.item_id = i.id
+         WHERE i.owner_id = $1`,
+        [userId]
+      );
+      
+      let totalEarned = 0;
+      earningsResult.rows.forEach(row => {
+         const days = Math.ceil((new Date(row.end_date).getTime() - new Date(row.start_date).getTime()) / (1000 * 60 * 60 * 24));
+         totalEarned += (row.price_per_day * days);
+      });
+
+      // Calculate Total Withdrawn (Pending + Paid)
+      const withdrawResult = await pool.query(
+        `SELECT SUM(amount) as total_withdrawn FROM withdrawals WHERE user_id = $1 AND status != 'rejected'`,
+        [userId]
+      );
+      const totalWithdrawn = parseInt(withdrawResult.rows[0].total_withdrawn || '0');
+      const available = totalEarned - totalWithdrawn;
+
+      // 3. THE CHECK: Do they have enough?
+      if (amount > available) {
+          return res.status(400).json({ message: "Insufficient funds" });
+      }
+
+      // 4. Create the Request
       await pool.query(
         `INSERT INTO withdrawals (user_id, amount, method, details, status) VALUES ($1, $2, $3, $4, 'pending')`,
         [userId, amount, method, details]
       );
       res.sendStatus(200);
+
     } catch (error) {
       console.error("Withdraw error:", error);
       res.status(500).json({ error: "Withdrawal failed" });
     }
   });
-
   // --- VERIFICATION ROUTES ---
 
   // 1. Verify Account
