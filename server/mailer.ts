@@ -1,12 +1,12 @@
 import { Resend } from 'resend';
 
-// 1. Initialize Resend with your API Key
+// Initialize Resend with your API Key
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function sendVerificationEmail(toEmail: string, code: string) {
   try {
-    const data = await resend.emails.send({
-      // 2. Use your VERIFIED domain here
+    // UPDATED: Destructure data and error from the response
+    const { data, error } = await resend.emails.send({
       from: 'CampusShare Security <noreply@campusshareapp.com>',
       to: [toEmail],
       subject: 'Verify your CampusShare Account',
@@ -31,10 +31,16 @@ export async function sendVerificationEmail(toEmail: string, code: string) {
       `
     });
 
-    console.log(`✅ Email sent successfully to ${toEmail}`);
+    // CRITICAL FIX: Check if Resend returned an error
+    if (error) {
+      console.error("❌ Resend API Error:", error);
+      return false;
+    }
+
+    console.log(`✅ Email sent successfully to ${toEmail}. ID: ${data?.id}`);
     return true;
   } catch (error) {
-    console.error("❌ Email failed to send:", error);
+    console.error("❌ Network/System Error:", error);
     return false;
   }
 }
