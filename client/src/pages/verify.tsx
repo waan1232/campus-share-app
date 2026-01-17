@@ -6,7 +6,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, ShieldCheck, Mail } from "lucide-react";
+import { Loader2, ShieldCheck, Mail, ArrowLeft, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function VerifyPage() {
@@ -15,12 +15,12 @@ export default function VerifyPage() {
   const { toast } = useToast();
   const [code, setCode] = useState("");
 
+  // Verify Code Mutation
   const verifyMutation = useMutation({
     mutationFn: async (code: string) => {
       await apiRequest("POST", "/api/verify-account", { code });
     },
     onSuccess: () => {
-      // Force refresh user data to update 'isVerified' status
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
       toast({ title: "Success!", description: "Your account is now verified." });
       setLocation("/dashboard");
@@ -28,13 +28,36 @@ export default function VerifyPage() {
     onError: (error: any) => {
       toast({
         title: "Verification Failed",
-        description: error.message || "Invalid code. Please check your console.",
+        description: error.message || "Invalid code.",
         variant: "destructive",
       });
     },
   });
 
-  // If user is already verified, kick them out of this page
+  // Resend Email Mutation
+  const resendMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/resend-verification");
+    },
+    onSuccess: () => {
+      toast({ title: "Email Sent", description: "Check your inbox (and spam folder)!" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Could not resend email. Try again later.", variant: "destructive" });
+    }
+  });
+
+  // Logout Mutation (Back Button)
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/auth/logout");
+    },
+    onSuccess: () => {
+      queryClient.setQueryData(["/api/user"], null);
+      setLocation("/login");
+    }
+  });
+
   if (user?.isVerified) {
     setLocation("/dashboard");
     return null;
@@ -50,7 +73,7 @@ export default function VerifyPage() {
           <div>
             <CardTitle className="text-2xl font-display font-bold text-primary">Check your Email</CardTitle>
             <CardDescription className="text-base mt-2">
-              We sent a verification code to <strong>{user?.email}</strong>.
+              We sent a code to <strong>{user?.email}</strong>.
             </CardDescription>
           </div>
         </CardHeader>
@@ -64,9 +87,6 @@ export default function VerifyPage() {
               value={code}
               onChange={(e) => setCode(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground text-center">
-              (Check your server console for the code simulation)
-            </p>
           </div>
 
           <Button 
@@ -77,11 +97,27 @@ export default function VerifyPage() {
             {verifyMutation.isPending ? <Loader2 className="animate-spin mr-2" /> : <ShieldCheck className="mr-2 h-5 w-5" />}
             Verify Account
           </Button>
-          
-          <div className="text-center">
-             <Button variant="link" size="sm" className="text-muted-foreground" onClick={() => window.location.reload()}>
-               I entered the code but nothing happened?
-             </Button>
+
+          <div className="flex justify-between items-center pt-4 border-t">
+            <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => logoutMutation.mutate()}
+                disabled={logoutMutation.isPending}
+            >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back / Logout
+            </Button>
+
+            <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => resendMutation.mutate()}
+                disabled={resendMutation.isPending}
+            >
+                {resendMutation.isPending ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <RefreshCw className="mr-2 h-4 w-4" />}
+                Resend Email
+            </Button>
           </div>
         </CardContent>
       </Card>
