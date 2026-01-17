@@ -13,13 +13,13 @@ import AuthPage from "@/pages/Auth";
 import Marketplace from "@/pages/Marketplace";
 import ItemDetail from "@/pages/ItemDetail";
 import PostItem from "@/pages/PostItem";
-import Dashboard from "@/pages/Dashboard"; // Only import this if you have the file
 import About from "@/pages/About";
 import InboxPage from "@/pages/inbox";
 import AccountPage from "@/pages/Account";
 import VerifyPage from "@/pages/verify";
 
 // --- THE GUARD COMPONENT ---
+// Blocks access if you are NOT logged in OR NOT verified
 function VerifiedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -51,11 +51,13 @@ function VerifiedRoute({ component: Component }: { component: React.ComponentTyp
 function Router() {
   return (
     <Switch>
-      {/* Public Routes */}
+      {/* --- PUBLIC ROUTES (No Guard) --- */}
+      {/* Anyone can see these pages, even without an account */}
+      
       <Route path="/auth" component={AuthPage} />
       <Route path="/about" component={About} />
       
-      {/* --- FIX IS HERE: Explicitly pass the mode prop --- */}
+      {/* Explicit Login/Register Modes */}
       <Route path="/login">
         <AuthPage mode="login" />
       </Route>
@@ -63,29 +65,25 @@ function Router() {
         <AuthPage mode="register" />
       </Route>
 
+      {/* Public Browsing */}
+      <Route path="/" component={Home} />
+      <Route path="/items" component={Marketplace} />
+      <Route path="/items/:id" component={ItemDetail} />
+
       {/* THE JAIL ROUTE */}
       <Route path="/verify" component={VerifyPage} />
 
-      {/* --- PROTECTED ROUTES --- */}
-      <Route path="/">
-         {() => <VerifiedRoute component={Home} />}
-      </Route>
-      
-      <Route path="/dashboard">
-         {/* If you have a dedicated Dashboard.tsx, swap 'Home' for 'Dashboard' below */}
-         {() => <VerifiedRoute component={Home} />} 
-      </Route>
 
-      <Route path="/items">
-         {() => <VerifiedRoute component={Marketplace} />}
+      {/* --- PROTECTED ROUTES (Logged In & Verified Only) --- */}
+      {/* These pages require the VerifiedRoute guard */}
+
+      <Route path="/dashboard">
+         {/* Mapping Dashboard to Home (Logged In View) */}
+         {() => <VerifiedRoute component={Home} />} 
       </Route>
 
       <Route path="/items/new">
          {() => <VerifiedRoute component={PostItem} />}
-      </Route>
-
-      <Route path="/items/:id">
-         {() => <VerifiedRoute component={ItemDetail} />}
       </Route>
 
       <Route path="/account">
@@ -96,6 +94,7 @@ function Router() {
          {() => <VerifiedRoute component={InboxPage} />}
       </Route>
 
+      {/* Fallback for 404 */}
       <Route component={NotFound} />
     </Switch>
   );
