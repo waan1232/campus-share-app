@@ -11,10 +11,21 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { 
   User, Lock, ShieldCheck, CreditCard, Bell, LogOut, ArrowLeft, Camera, 
-  Package, Wallet, Loader2, TrendingUp, DollarSign 
+  Package, Wallet, Loader2, TrendingUp, DollarSign, Trash2 
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Item } from "@shared/schema";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 // Types for Earnings
 interface EarningTransaction {
@@ -102,6 +113,19 @@ export default function AccountPage() {
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" })
   });
 
+  // Delete Account Mutation
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", "/api/user");
+    },
+    onSuccess: () => {
+      window.location.href = "/auth";
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to delete", description: error.message, variant: "destructive" });
+    }
+  });
+
   if (isLoading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -169,7 +193,7 @@ export default function AccountPage() {
                 </div>
                 
                 <div className="mt-6 text-xs text-muted-foreground">
-                   Member since 2024
+                    Member since 2024
                 </div>
               </CardContent>
             </Card>
@@ -260,7 +284,7 @@ export default function AccountPage() {
                         <Package className="h-3 w-3" /> {earnings?.history.length || 0} Transactions
                       </div>
                       <div className="bg-white/10 px-3 py-1 rounded-full flex items-center gap-2">
-                         <DollarSign className="h-3 w-3" /> Payouts via Venmo
+                          <DollarSign className="h-3 w-3" /> Payouts via Venmo
                       </div>
                     </div>
                   </CardContent>
@@ -360,42 +384,83 @@ export default function AccountPage() {
 
             {/* --- TAB CONTENT: SECURITY --- */}
             {activeTab === "security" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Security Settings</CardTitle>
-                  <CardDescription>Manage your password and account access.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid gap-2">
-                    <Label htmlFor="password">New Password</Label>
-                    <Input 
-                      id="password" 
-                      type="password" 
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="confirm">Confirm Password</Label>
-                    <Input 
-                      id="confirm" 
-                      type="password" 
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                    />
-                  </div>
-                  
-                  <div className="flex justify-end pt-4">
-                    <Button onClick={() => changePasswordMutation.mutate()} disabled={changePasswordMutation.isPending}>
-                      Update Password
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Security Settings</CardTitle>
+                    <CardDescription>Manage your password and account access.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="grid gap-2">
+                      <Label htmlFor="password">New Password</Label>
+                      <Input 
+                        id="password" 
+                        type="password" 
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="confirm">Confirm Password</Label>
+                      <Input 
+                        id="confirm" 
+                        type="password" 
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                      />
+                    </div>
+                    
+                    <div className="flex justify-end pt-4">
+                      <Button onClick={() => changePasswordMutation.mutate()} disabled={changePasswordMutation.isPending}>
+                        Update Password
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* --- DANGER ZONE (Delete Account) --- */}
+                <Card className="border-destructive/30 bg-destructive/5">
+                  <CardHeader>
+                    <CardTitle className="text-destructive flex items-center gap-2">
+                      <Trash2 className="h-5 w-5" /> Danger Zone
+                    </CardTitle>
+                    <CardDescription>
+                      Once you delete your account, there is no going back. Please be certain.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive" className="w-full sm:w-auto">
+                          Delete Account
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete your
+                            account, listings, and all associated data.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction 
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => deleteMutation.mutate()}
+                          >
+                            {deleteMutation.isPending ? "Deleting..." : "Yes, delete my account"}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </CardContent>
+                </Card>
+              </div>
             )}
 
-            {/* DANGER ZONE */}
-            <Card className="border-red-100 bg-red-50/50">
+            {/* LOG OUT (Always Visible at bottom) */}
+            <Card className="border-red-100 bg-red-50/50 mt-8">
               <CardContent className="p-6 flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-red-900">Log Out</h3>
