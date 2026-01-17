@@ -79,9 +79,9 @@ function Router() {
       {/* These pages require the VerifiedRoute guard */}
 
       <Route path="/dashboard">
-         {/* Mapping Dashboard to Home (Logged In View) */}
-         {() => <VerifiedRoute component={Home} />} 
-      </Route>
+   {/* If you have a dedicated Dashboard.tsx, swap 'Home' for 'Dashboard' below */}
+   {() => <VerifiedRoute component={Dashboard} />} 
+</Route>
 
       <Route path="/items/new">
          {() => <VerifiedRoute component={PostItem} />}
