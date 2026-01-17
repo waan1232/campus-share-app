@@ -1,10 +1,13 @@
 import { Navbar } from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, CheckCircle2, Search, ShieldCheck, Wallet, GraduationCap } from "lucide-react";
+import { ArrowRight, CheckCircle2, Search, ShieldCheck, Wallet, GraduationCap, School } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
+import { useAuth } from "@/hooks/use-auth"; // Added Import
 
 export default function Home() {
+  const { user } = useAuth(); // Get User Data
+
   const features = [
     {
       icon: <Wallet className="h-6 w-6 text-primary" />,
@@ -31,6 +34,19 @@ export default function Home() {
       <section className="relative overflow-hidden pt-16 pb-32 md:pt-24 md:pb-48">
         <div className="container relative z-10">
           <div className="mx-auto max-w-3xl text-center">
+            
+            {/* --- NEW SCHOOL BADGE (Visible only if logged in) --- */}
+            {user?.school && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary font-semibold text-sm mb-6 border border-primary/20"
+              >
+                <School className="h-4 w-4" />
+                <span>{user.school} Official Marketplace</span>
+              </motion.div>
+            )}
+
             <motion.h1 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -39,15 +55,27 @@ export default function Home() {
             >
               Don't Buy it. <span className="text-gradient">Share it.</span>
             </motion.h1>
+
             <motion.p 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.1 }}
               className="text-lg text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed"
             >
-              The exclusive marketplace for students to rent gear from peers. 
-              Find calculators, cameras, textbooks, and party supplies right on campus.
+              {/* Dynamic Text based on School Status */}
+              {user?.school ? (
+                 <span>
+                   You are currently browsing exclusive listings from students at <strong>{user.school}</strong>.
+                   Safe, local, and verified.
+                 </span>
+              ) : (
+                 <span>
+                   The exclusive marketplace for students to rent gear from peers. 
+                   Find calculators, cameras, textbooks, and party supplies right on campus.
+                 </span>
+              )}
             </motion.p>
+
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -57,14 +85,17 @@ export default function Home() {
               <Link href="/items">
                 <Button size="lg" className="rounded-full px-8 h-12 text-base font-semibold shadow-lg shadow-primary/25 hover:shadow-xl hover:-translate-y-0.5 transition-all">
                   <Search className="mr-2 h-4 w-4" />
-                  Browse Marketplace
+                  {user ? "Browse My Campus" : "Browse Marketplace"}
                 </Button>
               </Link>
-              <Link href="/register">
-                <Button variant="outline" size="lg" className="rounded-full px-8 h-12 text-base font-semibold border-2 hover:bg-secondary/50">
-                  Join CampusShare
-                </Button>
-              </Link>
+              
+              {!user && (
+                <Link href="/register">
+                  <Button variant="outline" size="lg" className="rounded-full px-8 h-12 text-base font-semibold border-2 hover:bg-secondary/50">
+                    Join CampusShare
+                  </Button>
+                </Link>
+              )}
             </motion.div>
           </div>
         </div>
@@ -127,13 +158,12 @@ export default function Home() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {['Electronics', 'Textbooks', 'Party', 'Sports'].map((category) => (
               <Link key={category} href={`/items?category=${category}`}>
-                <div className="group relative overflow-hidden rounded-xl aspect-[4/3] cursor-pointer">
-                  {/* Category Image Placeholder with Unsplash */}
-                  {/* Category: {category} */}
+                <div className="group relative overflow-hidden rounded-xl aspect-[4/3] cursor-pointer bg-muted">
+                  {/* Replaced unsplash source with generic placeholder to prevent 404s if API fails */}
                   <img 
-                    src={`https://source.unsplash.com/800x600/?${category.toLowerCase()},student`} 
+                    src={`https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&q=80&w=800`} 
                     alt={category}
-                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110 opacity-80 group-hover:opacity-100"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-6">
                     <h3 className="text-white font-bold text-lg">{category}</h3>
