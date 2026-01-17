@@ -13,10 +13,10 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
 
-  // --- NEW VERIFICATION METHOD ---
+  // --- VERIFICATION ---
   verifyUser(userId: number, code: string): Promise<boolean>;
 
-  // --- UPDATED GET ITEMS SIGNATURE (Requires User) ---
+  // --- MARKETPLACE (Public Access Allowed) ---
   getItems(user?: User, filters?: { search?: string, category?: string }): Promise<(Item & { ownerName: string })[]>;
   
   getItem(id: number): Promise<(Item & { ownerName: string }) | undefined>;
@@ -72,7 +72,7 @@ export class DatabaseStorage implements IStorage {
     const emailParts = insertUser.email.split('@');
     const domain = emailParts.length > 1 ? emailParts[1] : 'General Public';
 
-    // 2. GENERATE VERIFICATION CODE (6 Digits)
+    // 2. GENERATE VERIFICATION CODE
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
     // 3. SEND REAL EMAIL (Using Resend)
@@ -83,14 +83,13 @@ export class DatabaseStorage implements IStorage {
 
     const [user] = await db.insert(users).values({
         ...insertUser,
-        school: domain,        // Use the domain as the "Marketplace ID"
+        school: domain,        
         verificationCode: code,
-        isVerified: false      // User starts unverified
+        isVerified: false      
     }).returning();
     return user;
   }
 
-  // --- NEW: VERIFY USER ---
   async verifyUser(userId: number, code: string): Promise<boolean> {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     
@@ -104,20 +103,30 @@ export class DatabaseStorage implements IStorage {
 
   async getItems(user?: User, filters?: { search?: string, category?: string }): Promise<(Item & { ownerName: string })[]> {
     
-    // --- GATEKEEPER LOGIC ---
-    if (!user || !user.isVerified || !user.school) {
-        return []; // Return NOTHING if checks fail
+    // --- UPDATED LOGIC FOR PUBLIC ACCESS ---
+    let targetSchool = 'General Public';
+
+    if (user) {
+        // If Logged In & Verified -> Show THEIR school's items
+        if (user.isVerified && user.school) {
+            targetSchool = user.school;
+        } 
+        // If Logged In & NOT Verified -> Show NOTHING (Jail Mode)
+        else if (!user.isVerified) {
+            return [];
+        }
     }
+    // If NOT Logged In -> targetSchool remains 'General Public' (Window Shopping)
 
     // --- SILO LOGIC ---
-    const ownersAtMySchool = db
+    const ownersAtSchool = db
         .select({ id: users.id })
         .from(users)
-        .where(eq(users.school, user.school));
+        .where(eq(users.school, targetSchool));
 
     let conditions = [
         eq(items.isAvailable, true),
-        inArray(items.ownerId, ownersAtMySchool) // The Filter
+        inArray(items.ownerId, ownersAtSchool) // Filter by school (or General Public)
     ];
 
     if (filters?.category && filters.category !== "All") {
@@ -182,11 +191,6 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async createItem(item: InsertItem): Promise<Item> {
-    const [newItem] = await db.insert(items).values(item).returning();
-    return newItem;
-  }
-
   async getUserItems(userId: number): Promise<(Item & { ownerName: string })[]> {
     const results = await db.select({
       id: items.id,
@@ -210,6 +214,11 @@ export class DatabaseStorage implements IStorage {
       ...r,
       ownerName: r.ownerName as string
     }));
+  }
+
+  async createItem(item: InsertItem): Promise<Item> {
+    const [newItem] = await db.insert(items).values(item).returning();
+    return newItem;
   }
 
   async updateItem(itemId: number, item: Partial<InsertItem>): Promise<Item | undefined> {
@@ -326,7 +335,6 @@ export class DatabaseStorage implements IStorage {
     await db.delete(rentals).where(eq(rentals.id, id));
   }
 
-  // --- MESSAGES IMPLEMENTATION ---
   async createMessage(message: any): Promise<any> {
     const [msg] = await db.insert(messages).values(message).returning();
     return msg;
@@ -342,9 +350,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async markMessagesRead(senderId: number, receiverId: number): Promise<void> {
-    await db.update(messages)
-        .set({ read: true })
-        .where(and(eq(messages.senderId, senderId), eq(messages.receiverId, receiverId)));
+    await db.update(messages).set({ read: true }).where(and(eq(messages.senderId, senderId), eq(messages.receiverId, receiverId)));
   }
 
   async deleteConversation(userA: number, userB: number): Promise<void> {
@@ -356,32 +362,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   // --- DELETE USER (Cascading Delete) ---
-  // Fixes "violates foreign key constraint" error
   async deleteUser(userId: number): Promise<void> {
-    // 1. Delete messages (sent or received by user)
+    // 1. Delete messages
     await db.delete(messages).where(or(
         eq(messages.senderId, userId),
         eq(messages.receiverId, userId)
     ));
 
-    // 2. Delete rentals (where user is renter)
+    // 2. Delete rentals
     await db.delete(rentals).where(eq(rentals.renterId, userId));
 
     // 3. Delete favorites
     await db.delete(favorites).where(eq(favorites.userId, userId));
 
-    // 4. Delete items owned by user (and their associated rentals/messages)
+    // 4. Delete items and associated data
     const userItems = await db.select({ id: items.id }).from(items).where(eq(items.ownerId, userId));
     const itemIds = userItems.map(i => i.id);
     
     if (itemIds.length > 0) {
-        // Delete rentals on these items (where user is Owner)
         await db.delete(rentals).where(inArray(rentals.itemId, itemIds));
-        // Delete favorites on these items
         await db.delete(favorites).where(inArray(favorites.itemId, itemIds));
-        // Delete messages linked to these items
         await db.delete(messages).where(inArray(messages.itemId, itemIds));
-        // Finally delete the items
         await db.delete(items).where(inArray(items.id, itemIds));
     }
 
