@@ -7,40 +7,17 @@ import { pool } from "./db";
 
 const PostgresSessionStore = connectPg(session);
 
-// --- SCHOOL DETECTION LOGIC (MOVED HERE) ---
-const SCHOOL_DOMAINS: Record<string, string> = {
-  'purdue.edu': 'Purdue University',
-  'bowdoin.edu': 'Bowdoin College',
-  'harvard.edu': 'Harvard University',
-  'yale.edu': 'Yale University',
-  'gvsu.edu': 'Grand Valley State University',
-  'wmich.edu': 'Western Michigan University',
-  'umich.edu': 'University of Michigan',
-  'msu.edu': 'Michigan State University',
-  'wayne.edu': 'Wayne State University',
-  'indiana.edu': 'Indiana University',
-  'nd.edu': 'University of Notre Dame'
-};
-
-function determineSchool(email: string): string {
-  if (!email || !email.includes('@')) return 'General Public';
-  const domain = email.split('@')[1];
-  
-  if (SCHOOL_DOMAINS[domain]) return SCHOOL_DOMAINS[domain];
-
-  for (const key in SCHOOL_DOMAINS) {
-    if (domain.endsWith(key)) return SCHOOL_DOMAINS[key];
-  }
-
-  return 'General Public';
-}
-
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
 
-  getItems(filters?: { search?: string, category?: string, school?: string }): Promise<(Item & { ownerName: string })[]>;
+  // --- NEW VERIFICATION METHOD ---
+  verifyUser(userId: number, code: string): Promise<boolean>;
+
+  // --- UPDATED GET ITEMS SIGNATURE (Requires User) ---
+  getItems(user?: User, filters?: { search?: string, category?: string }): Promise<(Item & { ownerName: string })[]>;
+  
   getItem(id: number): Promise<(Item & { ownerName: string }) | undefined>;
   getUserItems(userId: number): Promise<(Item & { ownerName: string })[]>;
   createItem(item: InsertItem): Promise<Item>;
@@ -87,18 +64,64 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    // AUTOMATICALLY ASSIGN SCHOOL ON CREATION
-    const school = determineSchool(insertUser.email || "");
-    
+    // 1. DYNAMIC SCHOOL DETECTION
+    // We assume the schema already validated it ends in .edu
+    // We extract the domain (e.g., "purdue.edu" from "john@purdue.edu")
+    const emailParts = insertUser.email.split('@');
+    const domain = emailParts.length > 1 ? emailParts[1] : 'General Public';
+
+    // 2. GENERATE VERIFICATION CODE (6 Digits)
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // 3. LOG CODE TO CONSOLE (Simulation)
+    console.log(`\n=== VERIFICATION SIMULATION ===`);
+    console.log(`To: ${insertUser.email}`);
+    console.log(`School Detected: ${domain}`);
+    console.log(`Your Code: ${code}`);
+    console.log(`===============================\n`);
+
     const [user] = await db.insert(users).values({
         ...insertUser,
-        school: school // Force the detected school
+        school: domain,        // Use the domain as the "Marketplace ID"
+        verificationCode: code,
+        isVerified: false      // User starts unverified
     }).returning();
     return user;
   }
 
-  async getItems(filters?: { search?: string, category?: string, school?: string }): Promise<(Item & { ownerName: string })[]> {
-    let conditions = [eq(items.isAvailable, true)];
+  // --- NEW: VERIFY USER ---
+  async verifyUser(userId: number, code: string): Promise<boolean> {
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    
+    // Check if code matches
+    if (!user || user.verificationCode !== code) return false;
+
+    // Verify the user
+    await db.update(users).set({ isVerified: true }).where(eq(users.id, userId));
+    return true;
+  }
+
+  async getItems(user?: User, filters?: { search?: string, category?: string }): Promise<(Item & { ownerName: string })[]> {
+    
+    // --- GATEKEEPER LOGIC ---
+    // 1. Must be Logged In
+    // 2. Must be Verified
+    // 3. Must have a School assigned
+    if (!user || !user.isVerified || !user.school) {
+        return []; // Return NOTHING if checks fail
+    }
+
+    // --- SILO LOGIC ---
+    // Only show items owned by people in the SAME school
+    const ownersAtMySchool = db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.school, user.school));
+
+    let conditions = [
+        eq(items.isAvailable, true),
+        inArray(items.ownerId, ownersAtMySchool) // The Filter
+    ];
 
     if (filters?.category && filters.category !== "All") {
       conditions.push(eq(items.category, filters.category));
@@ -109,26 +132,6 @@ export class DatabaseStorage implements IStorage {
         like(items.title, `%${filters.search}%`),
         like(items.description, `%${filters.search}%`)
       ));
-    }
-
-    // --- STRICT SCHOOL FILTERING ---
-    if (filters?.school && filters.school !== 'General Public') {
-        // If you belong to a specific school, ONLY see items from that school
-        const ownersAtSchool = db
-            .select({ id: users.id })
-            .from(users)
-            .where(eq(users.school, filters.school));
-        
-        conditions.push(inArray(items.ownerId, ownersAtSchool));
-    } else {
-        // If you are General Public (or logged out), ONLY see General Public items
-        // This hides Purdue/Harvard items from random visitors
-        const publicOwners = db
-            .select({ id: users.id })
-            .from(users)
-            .where(eq(users.school, 'General Public'));
-
-        conditions.push(inArray(items.ownerId, publicOwners));
     }
 
     const results = await db.select({
