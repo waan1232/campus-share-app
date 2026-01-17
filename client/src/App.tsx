@@ -52,13 +52,17 @@ function VerifiedRoute({ component: Component }: { component: React.ComponentTyp
 function Router() {
   return (
     <Switch>
-      {/* --- PUBLIC ROUTES (No Guard) --- */}
-      {/* Anyone can see these pages, even without an account */}
+      {/* --- PRIORITY ROUTES (Specific paths must come first) --- */}
       
+      {/* 1. "New Item" MUST be before "Item Detail" (:id) */}
+      <Route path="/items/new">
+         {() => <VerifiedRoute component={PostItem} />}
+      </Route>
+
+      {/* --- PUBLIC ROUTES --- */}
       <Route path="/auth" component={AuthPage} />
       <Route path="/about" component={About} />
       
-      {/* Explicit Login/Register Modes */}
       <Route path="/login">
         <AuthPage mode="login" />
       </Route>
@@ -66,25 +70,20 @@ function Router() {
         <AuthPage mode="register" />
       </Route>
 
-      {/* Public Browsing */}
+      {/* Browsing */}
       <Route path="/" component={Home} />
       <Route path="/items" component={Marketplace} />
+      
+      {/* Now it's safe to put the generic ID route here */}
       <Route path="/items/:id" component={ItemDetail} />
 
-      {/* THE JAIL ROUTE */}
+      {/* Verification */}
       <Route path="/verify" component={VerifyPage} />
 
 
-      {/* --- PROTECTED ROUTES (Logged In & Verified Only) --- */}
-      {/* These pages require the VerifiedRoute guard */}
-
+      {/* --- PROTECTED ROUTES --- */}
       <Route path="/dashboard">
-   {/* If you have a dedicated Dashboard.tsx, swap 'Home' for 'Dashboard' below */}
-   {() => <VerifiedRoute component={Dashboard} />} 
-</Route>
-
-      <Route path="/items/new">
-         {() => <VerifiedRoute component={PostItem} />}
+         {() => <VerifiedRoute component={Dashboard} />} 
       </Route>
 
       <Route path="/account">
@@ -95,7 +94,7 @@ function Router() {
          {() => <VerifiedRoute component={InboxPage} />}
       </Route>
 
-      {/* Fallback for 404 */}
+      {/* Fallback */}
       <Route component={NotFound} />
     </Switch>
   );
