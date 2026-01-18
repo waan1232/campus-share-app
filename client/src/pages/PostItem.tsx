@@ -175,7 +175,7 @@ export default function PostItem() {
                     <FormItem>
                       <FormLabel>Price per Day ($)</FormLabel>
                       <FormControl>
-                        <Input type="number" step="0.01" min="0" placeholder="5.00" {...field} />
+                        <Input type="number" step="0.01" min="0" placeholder="0.00" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
