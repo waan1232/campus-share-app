@@ -365,7 +365,7 @@ export default function Dashboard() {
           const res = await apiRequest("PATCH", `/api/items/${editingItem.id}`, {
             title: editForm.title,
             description: editForm.description,
-            pricePerDay: editForm.price,
+            pricePerDay: Math.round(editForm.price * 100),
             category: editForm.category,
             condition: editForm.condition,
             location: editForm.location,
@@ -388,7 +388,7 @@ export default function Dashboard() {
         setEditForm({ 
             title: item.title, 
             description: item.description, 
-            price: item.pricePerDay,
+            price: item.pricePerDay / 100,
             category: item.category,
             condition: (item as any).condition || "Good",
             location: (item as any).location || "Main Campus",
