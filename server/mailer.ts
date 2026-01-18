@@ -44,3 +44,74 @@ export async function sendVerificationEmail(toEmail: string, code: string) {
     return false;
   }
 }
+
+// --- NEW FUNCTIONS ADDED BELOW ---
+
+export async function sendUsernameRecoveryEmail(toEmail: string, username: string) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: 'CampusShare Support <noreply@campusshareapp.com>',
+      to: [toEmail],
+      subject: 'CampusShare - Username Recovery',
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #1e293b;">Forgot your username?</h2>
+          <p style="color: #475569;">No problem. We found your account.</p>
+          
+          <div style="margin: 24px 0;">
+            <p style="margin-bottom: 8px; font-weight: 500; color: #64748b;">Your username is:</p>
+            <h3 style="color: #2563eb; background: #f1f5f9; padding: 12px 24px; display: inline-block; border-radius: 8px; margin: 0;">
+              ${username}
+            </h3>
+          </div>
+
+          <p style="color: #475569;">You can now log in at <a href="https://campusshareapp.com">campusshareapp.com</a></p>
+        </div>
+      `
+    });
+
+    if (error) {
+      console.error("❌ Resend API Error (Username):", error);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("❌ Network/System Error:", error);
+    return false;
+  }
+}
+
+export async function sendPasswordResetEmail(toEmail: string, code: string) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: 'CampusShare Support <noreply@campusshareapp.com>',
+      to: [toEmail],
+      subject: 'CampusShare - Reset Password',
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #1e293b;">Reset your password</h2>
+          <p style="color: #475569;">Use the code below to reset your password:</p>
+          
+          <div style="margin: 24px 0;">
+            <h1 style="color: #2563eb; letter-spacing: 5px; background: #f0fdf4; padding: 12px 24px; display: inline-block; border-radius: 8px; margin: 0;">
+              ${code}
+            </h1>
+          </div>
+
+          <p style="font-size: 12px; color: #94a3b8;">
+            If you didn't request this, you can safely ignore this email.
+          </p>
+        </div>
+      `
+    });
+
+    if (error) {
+      console.error("❌ Resend API Error (Password Reset):", error);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("❌ Network/System Error:", error);
+    return false;
+  }
+}
