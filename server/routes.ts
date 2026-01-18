@@ -14,7 +14,8 @@ import { sendVerificationEmail } from "./mailer";
 import Stripe from "stripe"; 
 
 // Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+// We use a fallback key to prevent crashes during build, but functionality requires the real key
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder", {
   apiVersion: "2025-01-27.acacia", 
 });
 
@@ -109,7 +110,12 @@ export async function registerRoutes(
   // ==========================================
 
   // 1. ONBOARDING
- // ... inside the /api/stripe/onboard route ...
+  app.post("/api/stripe/onboard", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    const user = req.user as any;
+
+    try {
+      let accountId = user.stripe_account_id; 
 
       // Create account if not exists
       if (!accountId) {
@@ -117,26 +123,36 @@ export async function registerRoutes(
           type: "express",
           country: "US",
           email: user.email,
-          
-          // 1. FORCE "INDIVIDUAL" (Removes the Business Type question)
-          business_type: "individual", 
-          
-          // 2. PRE-FILL DATA (Skips Name/Email entry steps)
+          business_type: "individual", // Force Individual to skip business questions
           individual: {
              email: user.email,
              first_name: user.name.split(" ")[0],
-             last_name: user.name.split(" ").slice(1).join(" ") || "", // Handles users with one name
+             last_name: user.name.split(" ").slice(1).join(" ") || "",
           },
-
           capabilities: {
             card_payments: { requested: true },
             transfers: { requested: true },
           },
         });
-        
         accountId = account.id;
+        // Save to DB immediately
         await pool.query(`UPDATE users SET stripe_account_id = $1 WHERE id = $2`, [accountId, user.id]);
       }
+
+      // Create the Account Link (The URL Stripe sends back)
+      const accountLink = await stripe.accountLinks.create({
+        account: accountId,
+        refresh_url: `${process.env.BASE_URL || 'http://localhost:5000'}/account`,
+        return_url: `${process.env.BASE_URL || 'http://localhost:5000'}/account?stripe=success`,
+        type: "account_onboarding",
+      });
+
+      res.json({ url: accountLink.url });
+    } catch (error: any) {
+      console.error("Stripe Onboarding Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   // 2. CHECK STATUS
   app.get("/api/stripe/check-status", async (req, res) => {
@@ -215,7 +231,7 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  //  CORE APP ROUTES (Restored)
+  //  CORE APP ROUTES
   // ==========================================
 
   app.get("/api/balance", async (req, res) => {
@@ -287,7 +303,7 @@ export async function registerRoutes(
     } catch (error) { res.status(500).json({ error: "Failed" }); }
   });
 
-  // Change Password (RESTORED)
+  // Change Password
   app.patch("/api/user/password", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
@@ -465,7 +481,7 @@ export async function registerRoutes(
     } catch (error) { res.status(500).json({ error: "Failed to send message" }); }
   });
 
-  // Accept Offer (RESTORED)
+  // Accept Offer
   app.patch("/api/messages/:id/offer", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const msgId = Number(req.params.id);
@@ -555,6 +571,7 @@ async function seedDatabase() {
         await pool.query(`UPDATE users SET is_verified = TRUE WHERE id = $1`, [user.id]);
     }
   }
+
 
   console.log("Database seeded successfully!");
 }
