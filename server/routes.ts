@@ -191,6 +191,7 @@ export async function registerRoutes(
   });
 
   // 3. CHECKOUT SESSION (Split Payments)
+  // 3. CHECKOUT SESSION (With URL Auto-Fix)
   app.post("/api/create-checkout-session", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     
@@ -204,9 +205,16 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Owner has not set up payouts yet." });
     }
 
-    // Amount Calculation
     const totalAmount = Math.round(price * days); 
-    const platformFee = Math.round(totalAmount * 0.15); // 15% Cut
+    const platformFee = Math.round(totalAmount * 0.15);
+
+    // --- NEW: SAFE URL CONSTRUCTION ---
+    // This fixes the error even if your Render Env Var is wrong
+    let baseUrl = process.env.BASE_URL || "http://localhost:5000";
+    if (!baseUrl.startsWith("http")) {
+      baseUrl = `https://${baseUrl}`;
+    }
+    // ----------------------------------
 
     try {
       const session = await stripe.checkout.sessions.create({
@@ -225,15 +233,14 @@ export async function registerRoutes(
             quantity: 1,
           },
         ],
-        // THIS SPLITS THE PAYMENT
         payment_intent_data: {
           application_fee_amount: platformFee,
           transfer_data: {
             destination: ownerStripeId,
           },
         },
-        success_url: `${process.env.BASE_URL || 'http://localhost:5000'}/dashboard?payment=success&rentalId=${rentalId}`,
-        cancel_url: `${process.env.BASE_URL || 'http://localhost:5000'}/dashboard?payment=cancelled`,
+        success_url: `${baseUrl}/dashboard?payment=success&rentalId=${rentalId}`,
+        cancel_url: `${baseUrl}/dashboard?payment=cancelled`,
       });
 
       res.json({ url: session.url });
