@@ -23,7 +23,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-// --- NEW IMPORT FOR CATEGORIES ---
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 
@@ -352,6 +351,10 @@ export default function Dashboard() {
         imageUrl: "" 
     });
 
+    const categories = [
+        "Textbooks", "Electronics", "Furniture", "Clothing", "Sports", "Games", "Kitchen", "Other"
+    ];
+
     const editMutation = useMutation({
         mutationFn: async () => {
           if(!editingItem) return;
@@ -366,7 +369,7 @@ export default function Dashboard() {
         },
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["/api/my-items"] });
-          toast({ title: "Updated", description: "Item details saved." });
+          toast({ title: "Updated", description: "Listing details saved successfully." });
           setEditingItem(null); // Close modal
         },
         onError: (err: any) => {
@@ -384,10 +387,6 @@ export default function Dashboard() {
             imageUrl: item.imageUrl
         });
     };
-
-    const categories = [
-        "Textbooks", "Electronics", "Furniture", "Clothing", "Sports", "Games", "Kitchen", "Other"
-    ];
 
     return (
       <div className="space-y-8">
@@ -460,83 +459,104 @@ export default function Dashboard() {
                       </PopoverContent>
                     </Popover>
 
-                    {/* --- FULL EDIT MODAL (UPDATED) --- */}
+                    {/* --- FULL LISTING-STYLE EDIT MODAL --- */}
                     <Dialog open={editingItem?.id === item.id} onOpenChange={(open) => !open && setEditingItem(null)}>
                       <DialogTrigger asChild>
                         <Button variant="outline" size="sm" className="w-full flex-1" onClick={() => openEditModal(item)}>
                           Edit
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
-                          <DialogTitle>Edit Listing</DialogTitle>
+                          <DialogTitle className="text-xl font-bold">Edit Listing</DialogTitle>
+                          <CardDescription>Update the details of your item below.</CardDescription>
                         </DialogHeader>
-                        <div className="space-y-4 py-2">
+                        
+                        <div className="space-y-6 py-4">
                             
-                            {/* Image Preview & Input */}
-                            <div className="space-y-2">
-                                <Label>Item Image</Label>
-                                {editForm.imageUrl && (
-                                    <div className="relative h-40 w-full rounded-md overflow-hidden border mb-2">
-                                        <img src={editForm.imageUrl} alt="Preview" className="h-full w-full object-cover" />
-                                    </div>
-                                )}
-                                <Input 
-                                    placeholder="https://..." 
-                                    value={editForm.imageUrl} 
-                                    onChange={(e) => setEditForm(prev => ({...prev, imageUrl: e.target.value}))} 
-                                />
-                                <p className="text-xs text-muted-foreground">Paste a URL for now (Uploads handled separately)</p>
-                            </div>
-
-                            {/* Title */}
-                            <div className="space-y-2">
-                                <Label>Title</Label>
-                                <Input 
-                                    value={editForm.title} 
-                                    onChange={(e) => setEditForm(prev => ({...prev, title: e.target.value}))} 
-                                />
-                            </div>
-
-                            {/* Category & Price Row */}
-                            <div className="grid grid-cols-2 gap-4">
+                            {/* Title & Category Row */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
-                                    <Label>Category</Label>
+                                    <Label className="text-sm font-medium">Title</Label>
+                                    <Input 
+                                        placeholder="Item Title"
+                                        value={editForm.title} 
+                                        onChange={(e) => setEditForm(prev => ({...prev, title: e.target.value}))} 
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-medium">Category</Label>
                                     <Select 
                                         value={editForm.category} 
                                         onValueChange={(val) => setEditForm(prev => ({...prev, category: val}))}
                                     >
                                         <SelectTrigger>
-                                            <SelectValue placeholder="Select" />
+                                            <SelectValue placeholder="Select Category" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 </div>
+                            </div>
+
+                            {/* Price & Image Row */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
-                                    <Label>Price / Day ($)</Label>
+                                    <Label className="text-sm font-medium">Price per Day ($)</Label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
+                                        <Input 
+                                            className="pl-7"
+                                            type="number"
+                                            value={editForm.price} 
+                                            onChange={(e) => setEditForm(prev => ({...prev, price: parseFloat(e.target.value)}))} 
+                                        />
+                                    </div>
+                                </div>
+                                {/* Image URL Input */}
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-medium">Image URL</Label>
                                     <Input 
-                                        type="number"
-                                        value={editForm.price} 
-                                        onChange={(e) => setEditForm(prev => ({...prev, price: parseFloat(e.target.value)}))} 
+                                        placeholder="https://..." 
+                                        value={editForm.imageUrl} 
+                                        onChange={(e) => setEditForm(prev => ({...prev, imageUrl: e.target.value}))} 
                                     />
                                 </div>
                             </div>
 
+                            {/* Image Preview */}
+                            {editForm.imageUrl && (
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-medium">Preview</Label>
+                                    <div className="relative h-48 w-full rounded-lg overflow-hidden border bg-muted/30 flex items-center justify-center">
+                                        <img 
+                                            src={editForm.imageUrl} 
+                                            alt="Preview" 
+                                            className="h-full w-full object-contain"
+                                            onError={(e) => (e.currentTarget.style.display = 'none')} 
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Description */}
                             <div className="space-y-2">
-                                <Label>Description</Label>
+                                <Label className="text-sm font-medium">Description</Label>
                                 <Textarea 
-                                    className="min-h-[100px]"
+                                    className="min-h-[120px]"
+                                    placeholder="Describe the condition, features, etc."
                                     value={editForm.description} 
                                     onChange={(e) => setEditForm(prev => ({...prev, description: e.target.value}))} 
                                 />
                             </div>
 
-                            <Button onClick={() => editMutation.mutate()} disabled={editMutation.isPending} className="w-full">
-                                {editMutation.isPending ? "Saving..." : "Save Changes"}
-                            </Button>
+                            <div className="pt-2 flex justify-end gap-3">
+                                <Button variant="outline" onClick={() => setEditingItem(null)}>Cancel</Button>
+                                <Button onClick={() => editMutation.mutate()} disabled={editMutation.isPending} className="px-8">
+                                    {editMutation.isPending ? "Saving..." : "Save Changes"}
+                                </Button>
+                            </div>
                         </div>
                       </DialogContent>
                     </Dialog>
@@ -547,7 +567,7 @@ export default function Dashboard() {
                       size="icon" 
                       className="h-9 w-9 text-destructive hover:bg-destructive/10"
                       onClick={() => {
-                        if (window.confirm("Are you sure?")) {
+                        if (window.confirm("Are you sure you want to delete this listing? This cannot be undone.")) {
                           deleteItemMutation.mutate(item.id);
                         }
                       }}
