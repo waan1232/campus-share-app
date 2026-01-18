@@ -24,6 +24,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+// --- NEW IMPORT ---
+import { ImageUpload } from "@/components/ImageUpload"; 
 
 
 export default function Dashboard() {
@@ -341,13 +343,15 @@ export default function Dashboard() {
   const unavailableBlocks = rentals?.incoming.filter(r => r.status === 'unavailable_block') || [];
   
   const MyListings = () => {
-    // State for the Edit Modal
+    // State for the Edit Modal (Matches PostItem form state)
     const [editingItem, setEditingItem] = useState<Item | null>(null);
     const [editForm, setEditForm] = useState({ 
         title: "", 
         description: "", 
         price: 0, 
         category: "", 
+        condition: "Good",
+        location: "Main Campus",
         imageUrl: "" 
     });
 
@@ -363,6 +367,8 @@ export default function Dashboard() {
             description: editForm.description,
             pricePerDay: editForm.price,
             category: editForm.category,
+            condition: editForm.condition,
+            location: editForm.location,
             imageUrl: editForm.imageUrl
           });
           return res.json();
@@ -384,6 +390,8 @@ export default function Dashboard() {
             description: item.description, 
             price: item.pricePerDay,
             category: item.category,
+            condition: (item as any).condition || "Good",
+            location: (item as any).location || "Main Campus",
             imageUrl: item.imageUrl
         });
     };
@@ -468,8 +476,8 @@ export default function Dashboard() {
                       </DialogTrigger>
                       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
-                          <DialogTitle className="text-xl font-bold">Edit Listing</DialogTitle>
-                          <CardDescription>Update your listing details exactly as they appear on the site.</CardDescription>
+                          <DialogTitle className="text-3xl font-display font-bold tracking-tight">Edit Listing</DialogTitle>
+                          <CardDescription>Update your item details below.</CardDescription>
                         </DialogHeader>
                         
                         <div className="space-y-6 py-4">
@@ -478,24 +486,13 @@ export default function Dashboard() {
                             <div className="space-y-2">
                                 <Label className="text-sm font-medium">Title</Label>
                                 <Input 
-                                    placeholder="e.g. TI-84 Calculator"
+                                    placeholder="e.g. TI-84 Plus CE Calculator"
                                     value={editForm.title} 
                                     onChange={(e) => setEditForm(prev => ({...prev, title: e.target.value}))} 
                                 />
                             </div>
 
-                            {/* 2. Description */}
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium">Description</Label>
-                                <Textarea 
-                                    className="min-h-[120px]"
-                                    placeholder="Describe the condition, features, etc."
-                                    value={editForm.description} 
-                                    onChange={(e) => setEditForm(prev => ({...prev, description: e.target.value}))} 
-                                />
-                            </div>
-
-                            {/* 3. Category & Price (Grid Row) */}
+                            {/* 2. Grid: Category & Price (Matches PostItem layout) */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <Label className="text-sm font-medium">Category</Label>
@@ -513,50 +510,69 @@ export default function Dashboard() {
                                 </div>
                                 <div className="space-y-2">
                                     <Label className="text-sm font-medium">Price per Day ($)</Label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-                                        <Input 
-                                            className="pl-7"
-                                            type="number"
-                                            value={editForm.price} 
-                                            onChange={(e) => setEditForm(prev => ({...prev, price: parseFloat(e.target.value)}))} 
-                                        />
-                                    </div>
+                                    <Input 
+                                        type="number"
+                                        step="0.01"
+                                        placeholder="5.00"
+                                        value={editForm.price} 
+                                        onChange={(e) => setEditForm(prev => ({...prev, price: parseFloat(e.target.value)}))} 
+                                    />
                                 </div>
                             </div>
 
-                            {/* 4. Image Section */}
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium">Item Image</Label>
-                                <div className="flex flex-col gap-4">
-                                    {editForm.imageUrl && (
-                                        <div className="relative w-full h-64 rounded-lg overflow-hidden border bg-muted/10 flex items-center justify-center">
-                                            <img 
-                                                src={editForm.imageUrl} 
-                                                alt="Preview" 
-                                                className="h-full w-full object-contain"
-                                                onError={(e) => (e.currentTarget.style.display = 'none')} 
-                                            />
-                                        </div>
-                                    )}
-                                    <div className="flex gap-2">
-                                        <Input 
-                                            className="flex-1"
-                                            placeholder="https://... (Image URL)" 
-                                            value={editForm.imageUrl} 
-                                            onChange={(e) => setEditForm(prev => ({...prev, imageUrl: e.target.value}))} 
-                                        />
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">
-                                        Paste a valid image URL to update the photo.
-                                    </p>
+                            {/* 3. Grid: Condition & Location (New Fields) */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-medium">Condition</Label>
+                                    <Select 
+                                        value={editForm.condition} 
+                                        onValueChange={(val) => setEditForm(prev => ({...prev, condition: val}))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select condition" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="New">New</SelectItem>
+                                            <SelectItem value="Good">Good</SelectItem>
+                                            <SelectItem value="Fair">Fair</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-medium">Pickup Location</Label>
+                                    <Input 
+                                        placeholder="e.g. Main Campus"
+                                        value={editForm.location} 
+                                        onChange={(e) => setEditForm(prev => ({...prev, location: e.target.value}))} 
+                                    />
+                                </div>
+                            </div>
+
+                            {/* 4. Description */}
+                            <div className="space-y-2">
+                                <Label className="text-sm font-medium">Description</Label>
+                                <Textarea 
+                                    className="min-h-[120px]"
+                                    placeholder="Describe the condition, what's included, etc."
+                                    value={editForm.description} 
+                                    onChange={(e) => setEditForm(prev => ({...prev, description: e.target.value}))} 
+                                />
+                            </div>
+
+                            {/* 5. Image Upload (Using the ImageUpload component) */}
+                            <div className="space-y-2">
+                                <Label className="text-sm font-medium">Item Photo</Label>
+                                <ImageUpload 
+                                    value={editForm.imageUrl} 
+                                    onChange={(url) => setEditForm(prev => ({...prev, imageUrl: url}))} 
+                                />
+                                <p className="text-[0.8rem] text-muted-foreground">Upload a clear photo of your item (JPG/PNG).</p>
                             </div>
 
                             <div className="pt-4 flex justify-end gap-3 border-t mt-4">
                                 <Button variant="outline" onClick={() => setEditingItem(null)}>Cancel</Button>
                                 <Button onClick={() => editMutation.mutate()} disabled={editMutation.isPending} className="px-8">
-                                    {editMutation.isPending ? "Saving..." : "Save Changes"}
+                                    {editMutation.isPending ? "Saving..." : "Update Listing"}
                                 </Button>
                             </div>
                         </div>
