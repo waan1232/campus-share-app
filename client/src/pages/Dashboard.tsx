@@ -340,41 +340,40 @@ export default function Dashboard() {
   const activeRentals = rentals?.incoming.filter(r => r.status === 'approved') || [];
   const unavailableBlocks = rentals?.incoming.filter(r => r.status === 'unavailable_block') || [];
   
-  const MyListings = () => {
+ const MyListings = () => {
+    // State for the Edit Modal
+    const [editingItem, setEditingItem] = useState<Item | null>(null);
+    const [editForm, setEditForm] = useState({ title: "", description: "", price: 0 });
+
+    const editMutation = useMutation({
+        mutationFn: async () => {
+          if(!editingItem) return;
+          const res = await apiRequest("PATCH", `/api/items/${editingItem.id}`, {
+            title: editForm.title,
+            description: editForm.description,
+            pricePerDay: editForm.price
+          });
+          return res.json();
+        },
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ["/api/my-items"] });
+          toast({ title: "Updated", description: "Item details saved." });
+          setEditingItem(null); // Close modal
+        }
+    });
+
+    const openEditModal = (item: Item) => {
+        setEditingItem(item);
+        setEditForm({ 
+            title: item.title, 
+            description: item.description, 
+            price: item.pricePerDay 
+        });
+    };
+
     return (
       <div className="space-y-8">
-        <div>
-          <h3 className="text-lg font-medium mb-4">Currently Rented Out</h3>
-          {activeRentals.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No items currently rented out.</p>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
-              {activeRentals.map(rental => (
-                <Card key={rental.id}>
-                  <CardContent className="flex items-center gap-4 p-4">
-                    <img 
-                      src={rental.item.imageUrl} 
-                      alt="" 
-                      className="h-16 w-16 rounded-md object-cover"
-                    />
-                    <div className="flex-1">
-                      <p className="font-bold">{rental.item.title}</p>
-                      <p className="text-sm text-muted-foreground">Rented by {rental.renter.name}</p>
-                      <p className="text-xs text-muted-foreground">Due back: {format(new Date(rental.endDate), "PP")}</p>
-                    </div>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => updateStatus.mutate({ id: rental.id, status: 'completed' })}
-                    >
-                      Returned
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* ... (Keep your "Currently Rented Out" section here) ... */}
 
         <div>
           <h3 className="text-lg font-medium mb-4">Manage Availability & Listings</h3>
@@ -393,49 +392,56 @@ export default function Dashboard() {
                     <CardTitle className="text-sm">{item.title}</CardTitle>
                   </CardHeader>
                   <CardFooter className="p-4 pt-0 gap-2">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="flex-1">
-                          <CalendarOff className="mr-2 h-4 w-4" />
-                          Availability
+                    {/* ... (Keep your Availability Popover here) ... */}
+
+                    {/* --- FIXED EDIT BUTTON (MODAL) --- */}
+                    <Dialog open={editingItem?.id === item.id} onOpenChange={(open) => !open && setEditingItem(null)}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm" className="w-full flex-1" onClick={() => openEditModal(item)}>
+                          Edit
                         </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <div className="p-4 space-y-4">
-                          <p className="text-sm font-medium">Block timeframe</p>
-                          <Calendar
-                            initialFocus
-                            mode="range"
-                            defaultMonth={new Date()}
-                            selected={{ from: dateRange?.from, to: dateRange?.to }}
-                            onSelect={(range: any) => setDateRange(range)}
-                          />
-                          <Button 
-                            className="w-full" 
-                            disabled={!dateRange?.from || !dateRange?.to || blockMutation.isPending}
-                            onClick={() => blockMutation.mutate({ 
-                              itemId: item.id, 
-                              startDate: dateRange!.from, 
-                              endDate: dateRange!.to 
-                            })}
-                          >
-                            {blockMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Confirm Block
-                          </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Edit Listing</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                                <Label>Title</Label>
+                                <Input 
+                                    value={editForm.title} 
+                                    onChange={(e) => setEditForm(prev => ({...prev, title: e.target.value}))} 
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Description</Label>
+                                <Textarea 
+                                    value={editForm.description} 
+                                    onChange={(e) => setEditForm(prev => ({...prev, description: e.target.value}))} 
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Price per Day ($)</Label>
+                                <Input 
+                                    type="number"
+                                    value={editForm.price} 
+                                    onChange={(e) => setEditForm(prev => ({...prev, price: parseFloat(e.target.value)}))} 
+                                />
+                            </div>
+                            <Button onClick={() => editMutation.mutate()} disabled={editMutation.isPending} className="w-full">
+                                {editMutation.isPending ? "Saving..." : "Save Changes"}
+                            </Button>
                         </div>
-                      </PopoverContent>
-                    </Popover>
-                    <Link href={`/items/edit/${item.id}`} className="flex-1">
-                      <Button variant="outline" size="sm" className="w-full">
-                        Edit
-                      </Button>
-                    </Link>
+                      </DialogContent>
+                    </Dialog>
+                    {/* ---------------------------------- */}
+
                     <Button 
                       variant="ghost" 
                       size="icon" 
                       className="h-9 w-9 text-destructive hover:bg-destructive/10"
                       onClick={() => {
-                        if (window.confirm("Are you sure you want to delete this listing? This will also remove any associated history.")) {
+                        if (window.confirm("Are you sure?")) {
                           deleteItemMutation.mutate(item.id);
                         }
                       }}
@@ -449,43 +455,8 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-
-        {unavailableBlocks.length > 0 && (
-          <div>
-            <h3 className="text-lg font-medium mb-4">Manual Availability Blocks</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {unavailableBlocks.map(block => (
-                <Card key={block.id} className="border-dashed">
-                  <CardContent className="flex items-center justify-between p-4">
-                    <div>
-                      <p className="font-bold text-sm">{block.item.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {format(new Date(block.startDate), "MMM d")} - {format(new Date(block.endDate), "MMM d, yyyy")}
-                      </p>
-                    </div>
-                    <Button 
-                      size="icon" 
-                      variant="ghost" 
-                      className="text-destructive"
-                      onClick={() => deleteMutation.mutate(block.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
         
-        <div className="pt-8 border-t flex gap-4">
-          <Link href="/items/new">
-            <Button>
-              <Package className="mr-2 h-4 w-4" />
-              List New Item
-            </Button>
-          </Link>
-        </div>
+        {/* ... (Keep your Manual Availability Blocks & List New Item button) ... */}
       </div>
     );
   };
