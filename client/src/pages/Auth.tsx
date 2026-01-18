@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
-import { useLocation } from "wouter";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { insertUserSchema } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { TermsModal } from "@/components/TermsModal";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,37 +18,53 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 export default function AuthPage() {
-  const { user, loginMutation, registerMutation } = useAuth();
+  const { loginMutation, registerMutation, user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  // State for Recovery Dialogs
+  // --- STATE FOR FORGOT PASSWORD/USERNAME ---
   const [showForgotUsername, setShowForgotUsername] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetStep, setResetStep] = useState<"email" | "code">("email");
   const [resetEmail, setResetEmail] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
 
+  // --- STATE FOR TERMS & CONDITIONS ---
+  const [showTerms, setShowTerms] = useState(false);
+
+  // --- REDIRECT LOGIC ---
   useEffect(() => {
-    if (user) setLocation("/dashboard");
+    if (user) {
+      if (user.isVerified) {
+        setLocation("/dashboard");
+      } else {
+        setLocation("/verify");
+      }
+    }
   }, [user, setLocation]);
 
+  // Prevent flash if logged in
+  if (user) return null;
+
+  // --- FORMS ---
   const loginForm = useForm({
     defaultValues: { username: "", password: "" },
   });
 
   const registerForm = useForm({
     resolver: zodResolver(insertUserSchema),
-    defaultValues: { username: "", password: "", name: "", email: "" },
+    defaultValues: { username: "", password: "", name: "", email: "", terms: false },
   });
 
-  // Forgot Username Handler
+  // --- HANDLERS FOR RECOVERY ---
+  
+  // 1. Forgot Username
   const handleRecoverUsername = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
     const email = formData.get("email") as string;
     
-    setIsLoading(true);
+    setRecoveryLoading(true);
     try {
       await apiRequest("POST", "/api/auth/forgot-username", { email });
       toast({ title: "Email Sent", description: "If an account exists, we sent the username." });
@@ -53,17 +72,17 @@ export default function AuthPage() {
     } catch (err) {
       toast({ title: "Error", description: "Something went wrong.", variant: "destructive" });
     } finally {
-      setIsLoading(false);
+      setRecoveryLoading(false);
     }
   };
 
-  // Forgot Password Handler (Step 1: Send Code)
+  // 2. Forgot Password - Step 1 (Send Code)
   const handleResetRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
     const email = formData.get("email") as string;
     
-    setIsLoading(true);
+    setRecoveryLoading(true);
     try {
       await apiRequest("POST", "/api/auth/forgot-password", { email });
       setResetEmail(email);
@@ -72,18 +91,18 @@ export default function AuthPage() {
     } catch (err) {
       toast({ title: "Error", description: "Something went wrong.", variant: "destructive" });
     } finally {
-      setIsLoading(false);
+      setRecoveryLoading(false);
     }
   };
 
-  // Forgot Password Handler (Step 2: Confirm Reset)
+  // 3. Forgot Password - Step 2 (Confirm Reset)
   const handleResetConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
     const code = formData.get("code") as string;
     const newPassword = formData.get("newPassword") as string;
 
-    setIsLoading(true);
+    setRecoveryLoading(true);
     try {
       await apiRequest("POST", "/api/auth/reset-password", { email: resetEmail, code, newPassword });
       toast({ title: "Success", description: "Password reset! You can now log in." });
@@ -92,7 +111,7 @@ export default function AuthPage() {
     } catch (err) {
       toast({ title: "Error", description: "Invalid code or email.", variant: "destructive" });
     } finally {
-      setIsLoading(false);
+      setRecoveryLoading(false);
     }
   };
 
@@ -112,6 +131,7 @@ export default function AuthPage() {
               <TabsTrigger value="register">Register</TabsTrigger>
             </TabsList>
 
+            {/* --- LOGIN TAB --- */}
             <TabsContent value="login">
               <Form {...loginForm}>
                 <form onSubmit={loginForm.handleSubmit((data) => loginMutation.mutate(data))} className="space-y-4">
@@ -141,8 +161,8 @@ export default function AuthPage() {
                       </FormItem>
                     )}
                   />
-                  
-                  {/* --- FORGOT BUTTONS (Centered & Clean) --- */}
+
+                  {/* RECOVERY BUTTONS */}
                   <div className="flex justify-between items-center text-xs px-1">
                       <button type="button" onClick={() => setShowForgotUsername(true)} className="text-muted-foreground hover:text-primary hover:underline">
                           Forgot Username?
@@ -151,9 +171,8 @@ export default function AuthPage() {
                           Forgot Password?
                       </button>
                   </div>
-                  {/* ----------------------------------------- */}
 
-                  <Button className="w-full mt-2" type="submit" disabled={loginMutation.isPending}>
+                  <Button className="w-full" type="submit" disabled={loginMutation.isPending}>
                     {loginMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Login
                   </Button>
@@ -161,6 +180,7 @@ export default function AuthPage() {
               </Form>
             </TabsContent>
 
+            {/* --- REGISTER TAB --- */}
             <TabsContent value="register">
               <Form {...registerForm}>
                 <form onSubmit={registerForm.handleSubmit((data) => registerMutation.mutate(data))} className="space-y-4">
@@ -216,6 +236,34 @@ export default function AuthPage() {
                       </FormItem>
                     )}
                   />
+
+                  {/* Terms Checkbox */}
+                  <FormField
+                    control={registerForm.control}
+                    name="terms"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel>
+                            I agree to the{" "}
+                            <span 
+                              className="text-primary hover:underline cursor-pointer"
+                              onClick={() => setShowTerms(true)}
+                            >
+                              Terms & Conditions
+                            </span>
+                          </FormLabel>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+
                   <Button className="w-full" type="submit" disabled={registerMutation.isPending}>
                     {registerMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Create Account
@@ -227,7 +275,12 @@ export default function AuthPage() {
         </CardContent>
       </Card>
 
-      {/* --- FORGOT USERNAME MODAL --- */}
+      {/* --- MODALS --- */}
+      
+      {/* 1. Terms Modal */}
+      <TermsModal open={showTerms} onOpenChange={setShowTerms} />
+
+      {/* 2. Forgot Username Modal */}
       <Dialog open={showForgotUsername} onOpenChange={setShowForgotUsername}>
         <DialogContent>
             <DialogHeader>
@@ -239,14 +292,14 @@ export default function AuthPage() {
                     <Label>Email Address</Label>
                     <Input name="email" type="email" required placeholder="you@college.edu" />
                 </div>
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading ? "Sending..." : "Send Username"}
+                <Button type="submit" className="w-full" disabled={recoveryLoading}>
+                    {recoveryLoading ? "Sending..." : "Send Username"}
                 </Button>
             </form>
         </DialogContent>
       </Dialog>
 
-      {/* --- FORGOT PASSWORD MODAL --- */}
+      {/* 3. Forgot Password Modal */}
       <Dialog open={showForgotPassword} onOpenChange={setShowForgotPassword}>
         <DialogContent>
             <DialogHeader>
@@ -264,8 +317,8 @@ export default function AuthPage() {
                         <Label>Email Address</Label>
                         <Input name="email" type="email" required placeholder="you@college.edu" />
                     </div>
-                    <Button type="submit" className="w-full" disabled={isLoading}>
-                        {isLoading ? "Sending..." : "Send Reset Code"}
+                    <Button type="submit" className="w-full" disabled={recoveryLoading}>
+                        {recoveryLoading ? "Sending..." : "Send Reset Code"}
                     </Button>
                 </form>
             ) : (
@@ -278,8 +331,8 @@ export default function AuthPage() {
                         <Label>New Password</Label>
                         <Input name="newPassword" type="password" required />
                     </div>
-                    <Button type="submit" className="w-full" disabled={isLoading}>
-                        {isLoading ? "Updating..." : "Set New Password"}
+                    <Button type="submit" className="w-full" disabled={recoveryLoading}>
+                        {recoveryLoading ? "Updating..." : "Set New Password"}
                     </Button>
                 </form>
             )}
@@ -287,9 +340,4 @@ export default function AuthPage() {
       </Dialog>
     </div>
   );
-}
-
-// Helper Label Component
-function Label({ children }: { children: React.ReactNode }) {
-    return <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">{children}</label>
 }
