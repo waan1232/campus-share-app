@@ -18,12 +18,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Item } from "@shared/schema";
-// --- NEW IMPORT ---
 import { PayButton } from "@/components/PayButton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+// --- NEW IMPORT FOR CATEGORIES ---
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 
 export default function Dashboard() {
@@ -340,10 +341,16 @@ export default function Dashboard() {
   const activeRentals = rentals?.incoming.filter(r => r.status === 'approved') || [];
   const unavailableBlocks = rentals?.incoming.filter(r => r.status === 'unavailable_block') || [];
   
- const MyListings = () => {
+  const MyListings = () => {
     // State for the Edit Modal
     const [editingItem, setEditingItem] = useState<Item | null>(null);
-    const [editForm, setEditForm] = useState({ title: "", description: "", price: 0 });
+    const [editForm, setEditForm] = useState({ 
+        title: "", 
+        description: "", 
+        price: 0, 
+        category: "", 
+        imageUrl: "" 
+    });
 
     const editMutation = useMutation({
         mutationFn: async () => {
@@ -351,7 +358,9 @@ export default function Dashboard() {
           const res = await apiRequest("PATCH", `/api/items/${editingItem.id}`, {
             title: editForm.title,
             description: editForm.description,
-            pricePerDay: editForm.price
+            pricePerDay: editForm.price,
+            category: editForm.category,
+            imageUrl: editForm.imageUrl
           });
           return res.json();
         },
@@ -359,6 +368,9 @@ export default function Dashboard() {
           queryClient.invalidateQueries({ queryKey: ["/api/my-items"] });
           toast({ title: "Updated", description: "Item details saved." });
           setEditingItem(null); // Close modal
+        },
+        onError: (err: any) => {
+            toast({ title: "Error", description: err.message, variant: "destructive" });
         }
     });
 
@@ -367,13 +379,42 @@ export default function Dashboard() {
         setEditForm({ 
             title: item.title, 
             description: item.description, 
-            price: item.pricePerDay 
+            price: item.pricePerDay,
+            category: item.category,
+            imageUrl: item.imageUrl
         });
     };
 
+    const categories = [
+        "Textbooks", "Electronics", "Furniture", "Clothing", "Sports", "Games", "Kitchen", "Other"
+    ];
+
     return (
       <div className="space-y-8">
-        {/* ... (Keep your "Currently Rented Out" section here) ... */}
+        <div>
+          <h3 className="text-lg font-medium mb-4">Currently Rented Out</h3>
+          {activeRentals.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No items currently rented out.</p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {activeRentals.map(rental => (
+                <Card key={rental.id}>
+                  <CardContent className="flex items-center gap-4 p-4">
+                    <img src={rental.item.imageUrl} alt="" className="h-16 w-16 rounded-md object-cover" />
+                    <div className="flex-1">
+                      <p className="font-bold">{rental.item.title}</p>
+                      <p className="text-sm text-muted-foreground">Rented by {rental.renter.name}</p>
+                      <p className="text-xs text-muted-foreground">Due back: {format(new Date(rental.endDate), "PP")}</p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => updateStatus.mutate({ id: rental.id, status: 'completed' })}>
+                      Returned
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div>
           <h3 className="text-lg font-medium mb-4">Manage Availability & Listings</h3>
@@ -392,20 +433,63 @@ export default function Dashboard() {
                     <CardTitle className="text-sm">{item.title}</CardTitle>
                   </CardHeader>
                   <CardFooter className="p-4 pt-0 gap-2">
-                    {/* ... (Keep your Availability Popover here) ... */}
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="flex-1">
+                          <CalendarOff className="mr-2 h-4 w-4" /> Availability
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <div className="p-4 space-y-4">
+                          <p className="text-sm font-medium">Block timeframe</p>
+                          <Calendar
+                            initialFocus
+                            mode="range"
+                            defaultMonth={new Date()}
+                            selected={{ from: dateRange?.from, to: dateRange?.to }}
+                            onSelect={(range: any) => setDateRange(range)}
+                          />
+                          <Button 
+                            className="w-full" 
+                            disabled={!dateRange?.from || !dateRange?.to || blockMutation.isPending}
+                            onClick={() => blockMutation.mutate({ itemId: item.id, startDate: dateRange!.from, endDate: dateRange!.to })}
+                          >
+                            {blockMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Confirm Block
+                          </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
 
-                    {/* --- FIXED EDIT BUTTON (MODAL) --- */}
+                    {/* --- FULL EDIT MODAL (UPDATED) --- */}
                     <Dialog open={editingItem?.id === item.id} onOpenChange={(open) => !open && setEditingItem(null)}>
                       <DialogTrigger asChild>
                         <Button variant="outline" size="sm" className="w-full flex-1" onClick={() => openEditModal(item)}>
                           Edit
                         </Button>
                       </DialogTrigger>
-                      <DialogContent>
+                      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                           <DialogTitle>Edit Listing</DialogTitle>
                         </DialogHeader>
-                        <div className="space-y-4 py-4">
+                        <div className="space-y-4 py-2">
+                            
+                            {/* Image Preview & Input */}
+                            <div className="space-y-2">
+                                <Label>Item Image</Label>
+                                {editForm.imageUrl && (
+                                    <div className="relative h-40 w-full rounded-md overflow-hidden border mb-2">
+                                        <img src={editForm.imageUrl} alt="Preview" className="h-full w-full object-cover" />
+                                    </div>
+                                )}
+                                <Input 
+                                    placeholder="https://..." 
+                                    value={editForm.imageUrl} 
+                                    onChange={(e) => setEditForm(prev => ({...prev, imageUrl: e.target.value}))} 
+                                />
+                                <p className="text-xs text-muted-foreground">Paste a URL for now (Uploads handled separately)</p>
+                            </div>
+
+                            {/* Title */}
                             <div className="space-y-2">
                                 <Label>Title</Label>
                                 <Input 
@@ -413,21 +497,43 @@ export default function Dashboard() {
                                     onChange={(e) => setEditForm(prev => ({...prev, title: e.target.value}))} 
                                 />
                             </div>
+
+                            {/* Category & Price Row */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Category</Label>
+                                    <Select 
+                                        value={editForm.category} 
+                                        onValueChange={(val) => setEditForm(prev => ({...prev, category: val}))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Price / Day ($)</Label>
+                                    <Input 
+                                        type="number"
+                                        value={editForm.price} 
+                                        onChange={(e) => setEditForm(prev => ({...prev, price: parseFloat(e.target.value)}))} 
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Description */}
                             <div className="space-y-2">
                                 <Label>Description</Label>
                                 <Textarea 
+                                    className="min-h-[100px]"
                                     value={editForm.description} 
                                     onChange={(e) => setEditForm(prev => ({...prev, description: e.target.value}))} 
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <Label>Price per Day ($)</Label>
-                                <Input 
-                                    type="number"
-                                    value={editForm.price} 
-                                    onChange={(e) => setEditForm(prev => ({...prev, price: parseFloat(e.target.value)}))} 
-                                />
-                            </div>
+
                             <Button onClick={() => editMutation.mutate()} disabled={editMutation.isPending} className="w-full">
                                 {editMutation.isPending ? "Saving..." : "Save Changes"}
                             </Button>
@@ -456,7 +562,42 @@ export default function Dashboard() {
           )}
         </div>
         
-        {/* ... (Keep your Manual Availability Blocks & List New Item button) ... */}
+        {unavailableBlocks.length > 0 && (
+          <div>
+            <h3 className="text-lg font-medium mb-4">Manual Availability Blocks</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {unavailableBlocks.map(block => (
+                <Card key={block.id} className="border-dashed">
+                  <CardContent className="flex items-center justify-between p-4">
+                    <div>
+                      <p className="font-bold text-sm">{block.item.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(new Date(block.startDate), "MMM d")} - {format(new Date(block.endDate), "MMM d, yyyy")}
+                      </p>
+                    </div>
+                    <Button 
+                      size="icon" 
+                      variant="ghost" 
+                      className="text-destructive"
+                      onClick={() => deleteMutation.mutate(block.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        <div className="pt-8 border-t flex gap-4">
+          <Link href="/items/new">
+            <Button>
+              <Package className="mr-2 h-4 w-4" />
+              List New Item
+            </Button>
+          </Link>
+        </div>
       </div>
     );
   };
