@@ -11,7 +11,8 @@ import path from "path";
 import express from "express";
 import fs from "fs";
 import { sendVerificationEmail } from "./mailer"; 
-import Stripe from "stripe"; 
+import Stripe from "stripe";
+import { sendUsernameRecoveryEmail, sendPasswordResetEmail } from "./mailer";
 
 // Initialize Stripe
 // We use a fallback key to prevent crashes during build, but functionality requires the real key
@@ -315,7 +316,65 @@ export async function registerRoutes(
       res.sendStatus(200);
     });
   });
+// --- RECOVERY ROUTES ---
 
+  // 1. Forgot Username
+  app.post("/api/auth/forgot-username", async (req, res) => {
+    const { email } = req.body;
+    // Find user (case insensitive email search)
+    const result = await pool.query(`SELECT username FROM users WHERE LOWER(email) = LOWER($1)`, [email]);
+    const user = result.rows[0];
+
+    if (user) {
+      // Send email (don't await, just let it send in background to be fast)
+      sendUsernameRecoveryEmail(email, user.username);
+    }
+    
+    // Always say "sent" for security (so hackers can't check which emails exist)
+    res.json({ message: "If that email exists, we sent the username." });
+  });
+
+  // 2. Forgot Password - Request Code
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    const { email } = req.body;
+    const result = await pool.query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1)`, [email]);
+    const user = result.rows[0];
+
+    if (user) {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      // Store code in the database (reusing the verification_code column)
+      await pool.query(`UPDATE users SET verification_code = $1 WHERE id = $2`, [code, user.id]);
+      sendPasswordResetEmail(email, code);
+    }
+
+    res.json({ message: "If that email exists, we sent a reset code." });
+  });
+
+  // 3. Forgot Password - Confirm Reset
+  app.post("/api/auth/reset-password", async (req, res) => {
+    const { email, code, newPassword } = req.body;
+    
+    // Find user with matching email AND code
+    const result = await pool.query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND verification_code = $2`, [email, code]);
+    const user = result.rows[0];
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid code or email" });
+    }
+
+    // Hash new password
+    const { scrypt, randomBytes } = await import("crypto");
+    const { promisify } = await import("util");
+    const scryptAsync = promisify(scrypt);
+    const salt = randomBytes(16).toString("hex");
+    const buf = (await scryptAsync(newPassword, salt, 64)) as Buffer;
+    const hashedPassword = `${buf.toString("hex")}.${salt}`;
+
+    // Update password and clear code
+    await pool.query(`UPDATE users SET password = $1, verification_code = NULL WHERE id = $2`, [hashedPassword, user.id]);
+
+    res.json({ message: "Password updated! You can now log in." });
+  });
   // User Profile
   app.patch("/api/user", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
