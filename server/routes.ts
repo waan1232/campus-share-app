@@ -192,6 +192,7 @@ export async function registerRoutes(
 
   // 3. CHECKOUT SESSION (Split Payments)
   // 3. CHECKOUT SESSION (With URL Auto-Fix)
+  // 3. CHECKOUT SESSION (Fixed Image URL)
   app.post("/api/create-checkout-session", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     
@@ -208,13 +209,18 @@ export async function registerRoutes(
     const totalAmount = Math.round(price * days); 
     const platformFee = Math.round(totalAmount * 0.15);
 
-    // --- NEW: SAFE URL CONSTRUCTION ---
-    // This fixes the error even if your Render Env Var is wrong
+    // 1. Ensure Base URL is valid HTTPS
     let baseUrl = process.env.BASE_URL || "http://localhost:5000";
     if (!baseUrl.startsWith("http")) {
       baseUrl = `https://${baseUrl}`;
     }
-    // ----------------------------------
+
+    // 2. Fix the Image URL (THIS IS THE FIX)
+    // If image is "/uploads/file.jpg", turn it into "https://campusshareapp.com/uploads/file.jpg"
+    let fullImageUrl = image;
+    if (image && !image.startsWith("http")) {
+        fullImageUrl = `${baseUrl}${image.startsWith("/") ? "" : "/"}${image}`;
+    }
 
     try {
       const session = await stripe.checkout.sessions.create({
@@ -226,7 +232,8 @@ export async function registerRoutes(
               currency: "usd",
               product_data: {
                 name: `Rental: ${title}`,
-                images: image ? [image] : [],
+                // Send the FULL URL to Stripe
+                images: fullImageUrl ? [fullImageUrl] : [],
               },
               unit_amount: totalAmount,
             },
