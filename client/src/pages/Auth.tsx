@@ -7,13 +7,13 @@ import { z } from "zod";
 import { insertUserSchema } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"; // New Import
-import { apiRequest } from "@/lib/queryClient"; // New Import
-import { useToast } from "@/hooks/use-toast"; // New Import
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AuthPage() {
   const { user, loginMutation, registerMutation } = useAuth();
@@ -31,12 +31,10 @@ export default function AuthPage() {
     if (user) setLocation("/dashboard");
   }, [user, setLocation]);
 
-  // Login Form
   const loginForm = useForm({
     defaultValues: { username: "", password: "" },
   });
 
-  // Register Form
   const registerForm = useForm({
     resolver: zodResolver(insertUserSchema),
     defaultValues: { username: "", password: "", name: "", email: "" },
@@ -70,7 +68,7 @@ export default function AuthPage() {
     try {
       await apiRequest("POST", "/api/auth/forgot-password", { email });
       setResetEmail(email);
-      setResetStep("code"); // Move to next step
+      setResetStep("code"); 
       toast({ title: "Code Sent", description: "Check your email for the reset code." });
     } catch (err) {
       toast({ title: "Error", description: "Something went wrong.", variant: "destructive" });
@@ -104,10 +102,10 @@ export default function AuthPage() {
       <div className="flex items-center justify-center p-8 bg-background">
         <Card className="w-full max-w-md border-0 shadow-none sm:border sm:shadow-sm">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-3xl font-bold font-display">CampusShare</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-2xl font-bold font-display">Welcome to CampusShare</CardTitle>
+            <p className="text-sm text-muted-foreground">
               The marketplace for college students.
-            </CardDescription>
+            </p>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="login" className="space-y-4">
@@ -146,8 +144,8 @@ export default function AuthPage() {
                       )}
                     />
                     
-                    {/* --- FORGOT LINKS --- */}
-                    <div className="flex justify-between text-xs text-muted-foreground px-1">
+                    {/* --- RESTORED BUTTONS IN ORIGINAL LAYOUT --- */}
+                    <div className="flex justify-between text-xs text-muted-foreground px-1 mt-1">
                         <button type="button" onClick={() => setShowForgotUsername(true)} className="hover:underline hover:text-primary">
                             Forgot Username?
                         </button>
@@ -155,9 +153,9 @@ export default function AuthPage() {
                             Forgot Password?
                         </button>
                     </div>
-                    {/* -------------------- */}
+                    {/* ------------------------------------------- */}
 
-                    <Button className="w-full" type="submit" disabled={loginMutation.isPending}>
+                    <Button className="w-full mt-2" type="submit" disabled={loginMutation.isPending}>
                       {loginMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Login
                     </Button>
@@ -232,24 +230,16 @@ export default function AuthPage() {
         </Card>
       </div>
       
-      {/* Background / Hero Section */}
-      <div className="hidden lg:flex flex-col justify-center p-12 bg-primary/5 border-l">
-        <div className="max-w-md mx-auto space-y-4">
-          <blockquote className="space-y-2">
-            <p className="text-lg font-medium leading-relaxed">
-              "CampusShare has made it so easy to find gear for my projects. I saved over $200 last semester by renting instead of buying!"
-            </p>
-            <footer className="text-sm text-muted-foreground">— Sarah J., Film Student</footer>
-          </blockquote>
-          <div className="grid grid-cols-2 gap-4 pt-8">
-            <div className="rounded-lg border bg-background p-4">
-              <div className="text-2xl font-bold text-primary mb-1">Safe</div>
-              <div className="text-sm text-muted-foreground">Verified student emails only</div>
-            </div>
-            <div className="rounded-lg border bg-background p-4">
-              <div className="text-2xl font-bold text-primary mb-1">Easy</div>
-              <div className="text-sm text-muted-foreground">Rent gear in minutes</div>
-            </div>
+      {/* Original Gradient Background Section */}
+      <div className="hidden lg:flex flex-col justify-center p-12 bg-gradient-to-br from-primary/10 to-primary/5 border-l">
+        <div className="max-w-md mx-auto space-y-4 text-center">
+          <div className="bg-background/50 backdrop-blur-sm p-8 rounded-2xl border shadow-sm">
+            <blockquote className="space-y-2">
+              <p className="text-lg font-medium leading-relaxed italic text-foreground/80">
+                "CampusShare has made it so easy to find gear for my projects. I saved over $200 last semester by renting instead of buying!"
+              </p>
+              <footer className="text-sm font-semibold text-primary">— Sarah J., Film Student</footer>
+            </blockquote>
           </div>
         </div>
       </div>
@@ -316,7 +306,7 @@ export default function AuthPage() {
   );
 }
 
-// Simple Label component since it was missing in standard shadcn exports sometimes
+// Helper Label Component
 function Label({ children }: { children: React.ReactNode }) {
     return <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">{children}</label>
 }
