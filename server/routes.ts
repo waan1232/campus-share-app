@@ -118,24 +118,37 @@ export async function registerRoutes(
       let accountId = user.stripe_account_id; 
 
       // Create account if not exists
+      // ... inside /api/stripe/onboard
+
+      // Create account if not exists
       if (!accountId) {
         const account = await stripe.accounts.create({
           type: "express",
           country: "US",
           email: user.email,
-          business_type: "individual", // Force Individual to skip business questions
+          business_type: "individual",
+          
           individual: {
              email: user.email,
              first_name: user.name.split(" ")[0],
              last_name: user.name.split(" ").slice(1).join(" ") || "",
           },
+
+          // --- NEW: SKIP THE BUSINESS DETAILS SCREEN ---
+          business_profile: {
+            mcc: "7394", // Code for "Equipment Rental & Leasing"
+            url: "https://campusshareapp.com", // Use your platform URL since students don't have one
+            product_description: "Peer-to-peer rental of college supplies and equipment.",
+          },
+          // ---------------------------------------------
+
           capabilities: {
             card_payments: { requested: true },
             transfers: { requested: true },
           },
         });
+        
         accountId = account.id;
-        // Save to DB immediately
         await pool.query(`UPDATE users SET stripe_account_id = $1 WHERE id = $2`, [accountId, user.id]);
       }
 
