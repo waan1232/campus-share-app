@@ -1,82 +1,87 @@
+import { Strategy as LocalStrategy } from "passport-local";
+import { Express } from "express";
+import session from "express-session";
+import { scrypt, randomBytes, timingSafeEqual } from "crypto";
+import { promisify } from "util";
+import { storage } from "./storage";
+import { User } from "@shared/schema";
 
-4:07:19 AM [express] POST /api/register 500 in 504ms :: {"message":"ENOENT: no such file or directory, open '/home/runner/workspace/dist/table.sql'"}
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async n._asyncQuery (/home/runner/workspace/dist/index.cjs:70:29841)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async n._rawEnsureSessionStoreTable (/home/runner/workspace/dist/index.cjs:70:28756)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-Error: ENOENT: no such file or directory, open '/home/runner/workspace/dist/table.sql'
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async Object.readFile (node:internal/fs/promises:1246:14)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async n._asyncQuery (/home/runner/workspace/dist/index.cjs:70:29841)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-Error: ENOENT: no such file or directory, open '/home/runner/workspace/dist/table.sql'
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async n._rawEnsureSessionStoreTable (/home/runner/workspace/dist/index.cjs:70:28756)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async Object.readFile (node:internal/fs/promises:1246:14)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async open (node:internal/fs/promises:639:25)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async open (node:internal/fs/promises:639:25)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async open (node:internal/fs/promises:639:25)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async open (node:internal/fs/promises:639:25)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async Object.readFile (node:internal/fs/promises:1246:14)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async n._rawEnsureSessionStoreTable (/home/runner/workspace/dist/index.cjs:70:28756)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-Error: ENOENT: no such file or directory, open '/home/runner/workspace/dist/table.sql'
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async n._asyncQuery (/home/runner/workspace/dist/index.cjs:70:29841)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async Object.readFile (node:internal/fs/promises:1246:14)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-Error: ENOENT: no such file or directory, open '/home/runner/workspace/dist/table.sql'
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async n._rawEnsureSessionStoreTable (/home/runner/workspace/dist/index.cjs:70:28756)
-2026-01-14 23:07:19.83
-d7a554ae
-User
-at async n._asyncQuery (/home/runner/workspace/dist/index.cjs:70:29841)
+const scryptAsync = promisify(scrypt);
+
+async function hashPassword(password: string) {
+  const salt = randomBytes(16).toString("hex");
+  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `${buf.toString("hex")}.${salt}`;
+}
+  const [hashed, salt] = stored.split(".");
+  const hashedPasswordBuf = Buffer.from(hashed, "hex");
+  const suppliedPasswordBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+  return timingSafeEqual(hashedPasswordBuf, suppliedPasswordBuf);
+}
+  const sessionSettings: session.SessionOptions = {
+    secret: process.env.SESSION_SECRET || "secret",
+    resave: false,
+    saveUninitialized: false,
+    store: storage.sessionStore,
+  };
+if (app.get("env") === "production") {
+    app.set("trust proxy", 1);
+  }
+
+  app.use(session(sessionSettings));
+  app.use(passport.initialize());
+  app.use(passport.session());
+
+  passport.use(
+    new LocalStrategy(async (username, password, done) => {
+      const user = await storage.getUserByUsername(username);
+      if (!user || !(await comparePasswords(password, user.password))) {
+        return done(null, false);
+      } else {
+        return done(null, user);
+      }
+    }),
+  );
+passport.serializeUser((user, done) => done(null, (user as User).id));
+  passport.deserializeUser(async (id: number, done) => {
+    const user = await storage.getUser(id);
+    done(null, user);
+
+  app.post("/api/register", async (req, res, next) => {
+try {
+      const existingUser = await storage.getUserByUsername(req.body.username);
+      if (existingUser) {
+        return res.status(409).send("Username already exists");
+      }
+
+      // EDU Check
+      if (!req.body.email || !req.body.email.endsWith(".edu")) {
+          return res.status(400).json({ message: "Email must end in .edu" });
+      }
+
+      const hashedPassword = await hashPassword(req.body.password);
+      const user = await storage.createUser({
+        ...req.body,
+        password: hashedPassword,
+      });
+
+      req.login(user, (err) => {
+        if (err) return next(err);
+        res.status(201).json(user);
+      });
+} catch (err) {
+next(err);
+});
+app.post("/api/login", passport.authenticate("local"), (req, res) => {
+    res.status(200).json(req.user);
+  });
+app.post("/api/logout", (req, res, next) => {
+    req.logout((err) => {
+      if (err) return next(err);
+      res.status(200).json({ message: "Logged out" });
+    });
+  });
+app.get("/api/user", (req, res) => {
+    if (req.isAuthenticated()) return res.json(req.user);
+    res.status(200).json(null); // Return null instead of 401 for "me" endpoint usually, but route spec says 200 or null
+  });
