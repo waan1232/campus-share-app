@@ -46,16 +46,23 @@ export default function Dashboard() {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
   const [earningsView, setEarningsView] = useState<'day' | 'month' | 'year' | 'all'>('month');
 
-  // --- HELPER: CALCULATE TRUE RENTAL COST ---
-  // Returns value in CENTS
-  const getRentalCost = (r: any) => {
-    // 1. If we have a negotiated total price, use it directly.
+  // --- PRICE HELPERS (CRITICAL FIX) ---
+  
+  // 1. Get the Raw Cost in CENTS (For Database & Stripe Logic)
+  const getRentalCostCents = (r: any) => {
+    // If we have a negotiated total price, that is the authority.
     if (r.totalPrice !== undefined && r.totalPrice !== null) {
-        return r.totalPrice;
+        return r.totalPrice; 
     }
-    // 2. Fallback to Days * Rate calculation
+    // Otherwise fallback to Days * Daily Rate
     const days = Math.max(1, Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / (1000 * 60 * 60 * 24)));
     return r.item.pricePerDay * days;
+  };
+
+  // 2. Get the Display Price in DOLLARS (For UI Text only)
+  // Divides cents by 100 because formatCurrency usually expects dollars, or raw display needs decimals
+  const getDisplayPrice = (r: any) => {
+    return getRentalCostCents(r) / 100;
   };
 
   const earningsData = useMemo(() => {
@@ -63,61 +70,52 @@ export default function Dashboard() {
     
     const completedRentals = rentals.incoming.filter(r => r.status === 'completed' || r.status === 'approved');
     
+    // Helper to sum up earnings in DOLLARS for the chart
+    const sumDollars = (list: any[]) => list.reduce((sum, r) => sum + getDisplayPrice(r), 0);
+
     if (earningsView === 'day') {
       const last7Days = Array.from({ length: 7 }, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        return startOfDay(d);
+        const d = new Date(); d.setDate(d.getDate() - i); return startOfDay(d);
       }).reverse();
       
       return last7Days.map(day => {
-        const amount = completedRentals
-          .filter(r => isSameDay(new Date(r.startDate), day))
-          .reduce((sum, r) => sum + getRentalCost(r), 0);
-        return { name: format(day, 'MMM d'), amount: amount / 100 };
+        const dailyRentals = completedRentals.filter(r => isSameDay(new Date(r.startDate), day));
+        return { name: format(day, 'MMM d'), amount: sumDollars(dailyRentals) };
       });
     }
 
     if (earningsView === 'month') {
       const last6Months = Array.from({ length: 6 }, (_, i) => {
-        const d = new Date();
-        d.setMonth(d.getMonth() - i);
-        return startOfMonth(d);
+        const d = new Date(); d.setMonth(d.getMonth() - i); return startOfMonth(d);
       }).reverse();
       
       return last6Months.map(month => {
-        const amount = completedRentals
-          .filter(r => isSameMonth(new Date(r.startDate), month))
-          .reduce((sum, r) => sum + getRentalCost(r), 0);
-        return { name: format(month, 'MMM'), amount: amount / 100 };
+        const monthlyRentals = completedRentals.filter(r => isSameMonth(new Date(r.startDate), month));
+        return { name: format(month, 'MMM'), amount: sumDollars(monthlyRentals) };
       });
     }
 
     if (earningsView === 'year') {
       const last3Years = Array.from({ length: 3 }, (_, i) => {
-        const d = new Date();
-        d.setFullYear(d.getFullYear() - i);
-        return startOfYear(d);
+        const d = new Date(); d.setFullYear(d.getFullYear() - i); return startOfYear(d);
       }).reverse();
       
       return last3Years.map(year => {
-        const amount = completedRentals
-          .filter(r => isSameYear(new Date(r.startDate), year))
-          .reduce((sum, r) => sum + getRentalCost(r), 0);
-        return { name: format(year, 'yyyy'), amount: amount / 100 };
+        const yearlyRentals = completedRentals.filter(r => isSameYear(new Date(r.startDate), year));
+        return { name: format(year, 'yyyy'), amount: sumDollars(yearlyRentals) };
       });
     }
 
     // All time
-    const total = completedRentals.reduce((sum, r) => sum + getRentalCost(r), 0);
-    return [{ name: 'Total Earnings', amount: total / 100 }];
+    const total = sumDollars(completedRentals);
+    return [{ name: 'Total Earnings', amount: total }];
   }, [rentals, earningsView]);
 
   const totalEarnings = useMemo(() => {
     if (!rentals?.incoming) return 0;
     return rentals.incoming
       .filter(r => r.status === 'completed' || r.status === 'approved')
-      .reduce((sum, r) => sum + getRentalCost(r), 0);
+      .reduce((sum, r) => sum + getDisplayPrice(r), 0);
   }, [rentals]);
 
   const blockMutation = useMutation({
@@ -202,7 +200,7 @@ export default function Dashboard() {
                 </Link>
               </CardHeader>
               <CardContent className="p-4 pt-0 text-sm">
-                <p className="font-bold text-primary">{formatCurrency(item.pricePerDay)}/day</p>
+                <p className="font-bold text-primary">{formatCurrency(item.pricePerDay / 100)}/day</p>
               </CardContent>
             </Card>
           ))
@@ -219,11 +217,9 @@ export default function Dashboard() {
     const [approvalPrice, setApprovalPrice] = useState<number>(0);
 
     const handleOpenApproval = (rental: any) => {
-        // Calculate costs using helper
-        const totalCents = getRentalCost(rental);
-        
         setApprovingRental(rental);
-        setApprovalPrice(totalCents / 100); // Display as dollars
+        // Pre-fill input with DOLLARS
+        setApprovalPrice(getDisplayPrice(rental)); 
     };
 
     const handleConfirmApproval = () => {
@@ -232,7 +228,7 @@ export default function Dashboard() {
         updateStatus.mutate({ 
             id: approvingRental.id, 
             status: 'approved',
-            totalPrice: Math.round(approvalPrice * 100) // Convert back to cents
+            totalPrice: Math.round(approvalPrice * 100) // Convert input dollars to cents for DB
         });
         
         setApprovingRental(null);
@@ -269,7 +265,8 @@ export default function Dashboard() {
                         {rental.totalPrice ? "Agreed Price" : "Estimated Value"}
                     </span>
                     <span className="font-medium text-primary">
-                      {formatCurrency(getRentalCost(rental))}
+                      {/* Display in Dollars */}
+                      {formatCurrency(getDisplayPrice(rental))}
                     </span>
                   </div>
                 </div>
@@ -347,9 +344,10 @@ export default function Dashboard() {
           </div>
         ) : (
           myRentals.map(rental => {
-            // Determine if we should treat this as a "Deal" (flat rate) or "Standard" (daily rate)
             const isDeal = rental.totalPrice !== undefined && rental.totalPrice !== null;
-            const finalCost = getRentalCost(rental); // This is always CENTS
+            const finalCostCents = getRentalCostCents(rental);
+            
+            // For standard rentals, we need days for the fallback logic
             const calculatedDays = Math.max(1, Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)));
 
             return (
@@ -374,18 +372,23 @@ export default function Dashboard() {
                             {format(new Date(rental.startDate), "MMM d")} - {format(new Date(rental.endDate), "MMM d")}
                         </span>
                         </div>
+                        {/* Display Price: Dollars */}
+                        <div className="mt-2 font-bold text-primary">
+                            {isDeal ? `Total: ${formatCurrency(finalCostCents / 100)}` : `${formatCurrency(rental.item.pricePerDay / 100)}/day`}
+                        </div>
                     </CardContent>
                 </div>
 
                 {/* --- PAY BUTTON LOGIC --- */}
                 {rental.status === 'approved' && (
                     <CardFooter className="p-4 pt-0">
-                        {/* FIX: If it's a deal, we pass the FULL PRICE as 'pricePerDay' and set days=1 
-                            This forces the stripe checkout to equal the exact Negotiated Total */}
                         <PayButton 
                             rentalId={rental.id}
                             title={rental.item.title}
-                            pricePerDay={isDeal ? finalCost : rental.item.pricePerDay} 
+                            // If it's a Deal (Fixed Price), pass that exact price (in CENTS) and days=1.
+                            // If it's standard, pass the daily rate (in CENTS) and the calculated days.
+                            // PayButton handles the final math (price * days).
+                            pricePerDay={isDeal ? finalCostCents : rental.item.pricePerDay} 
                             days={isDeal ? 1 : calculatedDays}
                             imageUrl={rental.item.imageUrl}
                             ownerId={rental.item.ownerId}
@@ -840,8 +843,7 @@ export default function Dashboard() {
                               <p className="text-xs text-muted-foreground">{format(new Date(rental.startDate), "MMM d, yyyy")}</p>
                             </div>
                           </div>
-                          {/* --- FIXED: Displays full deal value instead of daily rate --- */}
-                          <p className="text-sm font-bold text-green-600">+{formatCurrency(getRentalCost(rental))}</p>
+                          <p className="text-sm font-bold text-green-600">+{formatCurrency(getDisplayPrice(rental))}</p>
                         </div>
                       ))}
                   </div>
