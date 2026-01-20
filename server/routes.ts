@@ -572,19 +572,44 @@ export async function registerRoutes(
   });
 
   // --- MESSAGING SYSTEM ROUTES ---
-  app.post("/api/messages", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
-    const { receiverId, content, rentalId, itemId, offerPrice, startDate, endDate } = req.body;
-    const senderId = (req.user as any).id;
+  // Update message offer status AND Auto-Approve Rental
+  app.patch("/api/messages/:id/offer", async (req, res) => {
+    const { offer_status } = req.body;
+    const messageId = parseInt(req.params.id);
+
     try {
-      const status = offerPrice ? 'pending' : 'none';
+      // 1. Update the message status
       const result = await pool.query(
-        `INSERT INTO messages (sender_id, receiver_id, content, rental_id, item_id, offer_price, offer_status, start_date, end_date) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-        [senderId, receiverId, content, rentalId || null, itemId || null, offerPrice || null, status, startDate || null, endDate || null]
+        `UPDATE messages SET offer_status = $1 WHERE id = $2 RETURNING *`,
+        [offer_status, messageId]
       );
-      res.json(result.rows[0]);
-    } catch (error) { res.status(500).json({ error: "Failed to send message" }); }
+      const message = result.rows[0];
+
+      // 2. IF ACCEPTED: Automatically approve the rental with the new price
+      if (offer_status === 'accepted') {
+        await pool.query(
+            `UPDATE rentals 
+             SET status = 'approved', total_price = $1 
+             WHERE item_id = $2 
+               AND renter_id = $3 
+               AND start_date = $4 
+               AND end_date = $5 
+               AND status = 'pending'`,
+            [
+                message.offer_price, // Use the negotiated price
+                message.item_id,
+                message.sender_id,   // The person who sent the offer is the renter
+                message.start_date,
+                message.end_date
+            ]
+        );
+      }
+
+      res.json(message);
+    } catch (error: any) {
+      console.error("Error auto-accepting rental:", error);
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // Accept Offer
