@@ -545,10 +545,30 @@ export async function registerRoutes(
     } catch (e) { res.status(400).json({ message: "Invalid input" }); }
   });
 
-  app.delete("/api/rentals/:id", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
-    await storage.deleteRental(Number(req.params.id));
-    res.sendStatus(204);
+  // Update rental status (with optional price override)
+  app.patch("/api/rentals/:id/status", async (req, res) => {
+    const { status, totalPrice } = req.body; // <--- Get totalPrice from body
+    const rentalId = parseInt(req.params.id);
+
+    try {
+      // If a custom price is provided (and valid), update the price AND the status.
+      // Otherwise, just update the status.
+      if (totalPrice !== undefined && !isNaN(totalPrice)) {
+        await pool.query(
+          `UPDATE rentals SET status = $1, total_price = $2 WHERE id = $3`,
+          [status, totalPrice, rentalId]
+        );
+      } else {
+        await pool.query(
+          `UPDATE rentals SET status = $1 WHERE id = $2`,
+          [status, rentalId]
+        );
+      }
+
+      res.json({ message: "Rental status updated" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // --- MESSAGING SYSTEM ROUTES ---
