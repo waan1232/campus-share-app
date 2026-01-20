@@ -7,7 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { format, startOfDay, startOfMonth, startOfYear, isSameDay, isSameMonth, isSameYear } from "date-fns";
+import { formatCurrency } from "@/lib/utils";
+import { format, isWithinInterval, startOfDay, startOfMonth, startOfYear, isSameDay, isSameMonth, isSameYear } from "date-fns";
 import { Loader2, Package, CalendarCheck, AlertCircle, CheckCircle, XCircle, Heart, Trash2, CalendarOff, BarChart3, TrendingUp } from "lucide-react";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -24,14 +25,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ImageUpload } from "@/components/ImageUpload"; 
-
-// Explicit formatter that takes CENTS and outputs DOLLARS
-const formatCentsToDollars = (cents: number) => {
-    return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-    }).format(cents / 100);
-};
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -52,15 +45,22 @@ export default function Dashboard() {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
   const [earningsView, setEarningsView] = useState<'day' | 'month' | 'year' | 'all'>('month');
 
-  // --- HELPER: CALCULATE TRUE RENTAL COST IN CENTS ---
+  // --- HELPER: CALCULATE TRUE RENTAL COST ---
+  // Returns value in CENTS
   const getRentalCostCents = (r: any) => {
     // 1. If we have a negotiated total price, use it directly.
     if (r.totalPrice !== undefined && r.totalPrice !== null) {
-        return r.totalPrice; 
+        return r.totalPrice;
     }
     // 2. Fallback to Days * Rate calculation
     const days = Math.max(1, Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / (1000 * 60 * 60 * 24)));
     return r.item.pricePerDay * days;
+  };
+
+  // --- HELPER: GET DISPLAY DOLLARS ---
+  // Returns value in DOLLARS for UI display
+  const getDisplayDollars = (r: any) => {
+      return getRentalCostCents(r) / 100;
   };
 
   const earningsData = useMemo(() => {
@@ -68,53 +68,61 @@ export default function Dashboard() {
     
     const completedRentals = rentals.incoming.filter(r => r.status === 'completed' || r.status === 'approved');
     
-    // Helper to sum up earnings in DOLLARS for the chart (Charts expect dollars)
-    const sumDollars = (list: any[]) => list.reduce((sum, r) => sum + (getRentalCostCents(r) / 100), 0);
-
     if (earningsView === 'day') {
       const last7Days = Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(); d.setDate(d.getDate() - i); return startOfDay(d);
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        return startOfDay(d);
       }).reverse();
       
       return last7Days.map(day => {
-        const dailyRentals = completedRentals.filter(r => isSameDay(new Date(r.startDate), day));
-        return { name: format(day, 'MMM d'), amount: sumDollars(dailyRentals) };
+        const amount = completedRentals
+          .filter(r => isSameDay(new Date(r.startDate), day))
+          .reduce((sum, r) => sum + getDisplayDollars(r), 0);
+        return { name: format(day, 'MMM d'), amount: amount };
       });
     }
 
     if (earningsView === 'month') {
       const last6Months = Array.from({ length: 6 }, (_, i) => {
-        const d = new Date(); d.setMonth(d.getMonth() - i); return startOfMonth(d);
+        const d = new Date();
+        d.setMonth(d.getMonth() - i);
+        return startOfMonth(d);
       }).reverse();
       
       return last6Months.map(month => {
-        const monthlyRentals = completedRentals.filter(r => isSameMonth(new Date(r.startDate), month));
-        return { name: format(month, 'MMM'), amount: sumDollars(monthlyRentals) };
+        const amount = completedRentals
+          .filter(r => isSameMonth(new Date(r.startDate), month))
+          .reduce((sum, r) => sum + getDisplayDollars(r), 0);
+        return { name: format(month, 'MMM'), amount: amount };
       });
     }
 
     if (earningsView === 'year') {
       const last3Years = Array.from({ length: 3 }, (_, i) => {
-        const d = new Date(); d.setFullYear(d.getFullYear() - i); return startOfYear(d);
+        const d = new Date();
+        d.setFullYear(d.getFullYear() - i);
+        return startOfYear(d);
       }).reverse();
       
       return last3Years.map(year => {
-        const yearlyRentals = completedRentals.filter(r => isSameYear(new Date(r.startDate), year));
-        return { name: format(year, 'yyyy'), amount: sumDollars(yearlyRentals) };
+        const amount = completedRentals
+          .filter(r => isSameYear(new Date(r.startDate), year))
+          .reduce((sum, r) => sum + getDisplayDollars(r), 0);
+        return { name: format(year, 'yyyy'), amount: amount };
       });
     }
 
     // All time
-    const total = sumDollars(completedRentals);
+    const total = completedRentals.reduce((sum, r) => sum + getDisplayDollars(r), 0);
     return [{ name: 'Total Earnings', amount: total }];
   }, [rentals, earningsView]);
 
   const totalEarnings = useMemo(() => {
     if (!rentals?.incoming) return 0;
-    // Return total in CENTS
     return rentals.incoming
       .filter(r => r.status === 'completed' || r.status === 'approved')
-      .reduce((sum, r) => sum + getRentalCostCents(r), 0);
+      .reduce((sum, r) => sum + getDisplayDollars(r), 0);
   }, [rentals]);
 
   const blockMutation = useMutation({
@@ -199,7 +207,7 @@ export default function Dashboard() {
                 </Link>
               </CardHeader>
               <CardContent className="p-4 pt-0 text-sm">
-                <p className="font-bold text-primary">{formatCentsToDollars(item.pricePerDay)}/day</p>
+                <p className="font-bold text-primary">{formatCurrency(item.pricePerDay / 100)}/day</p>
               </CardContent>
             </Card>
           ))
@@ -213,14 +221,11 @@ export default function Dashboard() {
     
     // State for the Approval Modal
     const [approvingRental, setApprovingRental] = useState<any>(null);
-    const [approvalPrice, setApprovalPrice] = useState<number>(0); // In DOLLARS
+    const [approvalPrice, setApprovalPrice] = useState<number>(0);
 
     const handleOpenApproval = (rental: any) => {
-        // Get total in cents
         const totalCents = getRentalCostCents(rental);
-        
         setApprovingRental(rental);
-        // Pre-fill input with DOLLARS
         setApprovalPrice(totalCents / 100); 
     };
 
@@ -230,7 +235,7 @@ export default function Dashboard() {
         updateStatus.mutate({ 
             id: approvingRental.id, 
             status: 'approved',
-            totalPrice: Math.round(approvalPrice * 100) // Convert input dollars to cents for DB
+            totalPrice: Math.round(approvalPrice * 100) 
         });
         
         setApprovingRental(null);
@@ -267,8 +272,7 @@ export default function Dashboard() {
                         {rental.totalPrice ? "Agreed Price" : "Estimated Value"}
                     </span>
                     <span className="font-medium text-primary">
-                      {/* Display in Dollars */}
-                      {formatCentsToDollars(getRentalCostCents(rental))}
+                      {formatCurrency(getDisplayDollars(rental))}
                     </span>
                   </div>
                 </div>
@@ -347,9 +351,7 @@ export default function Dashboard() {
         ) : (
           myRentals.map(rental => {
             const isDeal = rental.totalPrice !== undefined && rental.totalPrice !== null;
-            const finalCostCents = getRentalCostCents(rental);
-            
-            // For standard rentals, we need days for the fallback logic
+            const finalCostCents = getRentalCostCents(rental); // CENTS
             const calculatedDays = Math.max(1, Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)));
 
             return (
@@ -375,9 +377,9 @@ export default function Dashboard() {
                         </span>
                         </div>
                         
-                        {/* DISPLAY PRICE LOGIC: Always shows Correct DOLLAR amount */}
+                        {/* VISUAL: Show DOLLARS */}
                         <div className="mt-2 font-bold text-primary">
-                            {isDeal ? `Total: ${formatCentsToDollars(finalCostCents)}` : `${formatCentsToDollars(rental.item.pricePerDay)}/day`}
+                            {isDeal ? `Total: ${formatCurrency(finalCostCents / 100)}` : `${formatCurrency(rental.item.pricePerDay / 100)}/day`}
                         </div>
                     </CardContent>
                 </div>
@@ -385,13 +387,12 @@ export default function Dashboard() {
                 {/* --- PAY BUTTON LOGIC --- */}
                 {rental.status === 'approved' && (
                     <CardFooter className="p-4 pt-0">
-                        {/* PAY BUTTON: PASS CENTS! 
-                            If isDeal, we pass total CENTS and 1 day.
-                            If standard, we pass daily CENTS and N days. 
-                        */}
                         <PayButton 
                             rentalId={rental.id} 
                             title={rental.item.title} 
+                            // STRIPE: Send CENTS.
+                            // If it's a deal, send Total Cents and days=1.
+                            // If it's standard, send Daily Cents and N days.
                             pricePerDay={isDeal ? finalCostCents : rental.item.pricePerDay} 
                             days={isDeal ? 1 : calculatedDays} 
                             imageUrl={rental.item.imageUrl} 
@@ -411,7 +412,7 @@ export default function Dashboard() {
   const unavailableBlocks = rentals?.incoming.filter(r => r.status === 'unavailable_block') || [];
   
   const MyListings = () => {
-    // State for the Edit Modal (Matches PostItem form state)
+    // State for the Edit Modal
     const [editingItem, setEditingItem] = useState<Item | null>(null);
     const [editForm, setEditForm] = useState({ 
         title: "", 
@@ -535,7 +536,6 @@ export default function Dashboard() {
                       </PopoverContent>
                     </Popover>
 
-                    {/* --- FULL LISTING-STYLE EDIT MODAL --- */}
                     <Dialog open={editingItem?.id === item.id} onOpenChange={(open) => !open && setEditingItem(null)}>
                       <DialogTrigger asChild>
                         <Button variant="outline" size="sm" className="w-full flex-1" onClick={() => openEditModal(item)}>
@@ -549,8 +549,6 @@ export default function Dashboard() {
                         </DialogHeader>
                         
                         <div className="space-y-6 py-4">
-                            
-                            {/* 1. Title */}
                             <div className="space-y-2">
                                 <Label className="text-sm font-medium">Title</Label>
                                 <Input 
@@ -559,8 +557,6 @@ export default function Dashboard() {
                                     onChange={(e) => setEditForm(prev => ({...prev, title: e.target.value}))} 
                                 />
                             </div>
-
-                            {/* 2. Grid: Category & Price (Matches PostItem layout) */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <Label className="text-sm font-medium">Category</Label>
@@ -587,8 +583,6 @@ export default function Dashboard() {
                                     />
                                 </div>
                             </div>
-
-                            {/* 3. Grid: Condition & Location (New Fields) */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <Label className="text-sm font-medium">Condition</Label>
@@ -615,8 +609,6 @@ export default function Dashboard() {
                                     />
                                 </div>
                             </div>
-
-                            {/* 4. Description */}
                             <div className="space-y-2">
                                 <Label className="text-sm font-medium">Description</Label>
                                 <Textarea 
@@ -626,8 +618,6 @@ export default function Dashboard() {
                                     onChange={(e) => setEditForm(prev => ({...prev, description: e.target.value}))} 
                                 />
                             </div>
-
-                            {/* 5. Image Upload (Using the ImageUpload component) */}
                             <div className="space-y-2">
                                 <Label className="text-sm font-medium">Item Photo</Label>
                                 <ImageUpload 
@@ -636,7 +626,6 @@ export default function Dashboard() {
                                 />
                                 <p className="text-[0.8rem] text-muted-foreground">Upload a clear photo of your item (JPG/PNG).</p>
                             </div>
-
                             <div className="pt-4 flex justify-end gap-3 border-t mt-4">
                                 <Button variant="outline" onClick={() => setEditingItem(null)}>Cancel</Button>
                                 <Button onClick={() => editMutation.mutate()} disabled={editMutation.isPending} className="px-8">
@@ -646,7 +635,6 @@ export default function Dashboard() {
                         </div>
                       </DialogContent>
                     </Dialog>
-                    {/* ---------------------------------- */}
 
                     <Button 
                       variant="ghost" 
@@ -755,7 +743,7 @@ export default function Dashboard() {
                   <Card className="bg-primary/5 border-primary/20">
                     <CardHeader className="pb-2">
                       <CardDescription className="text-primary/70">Total Revenue</CardDescription>
-                      <CardTitle className="text-3xl font-display">{formatCentsToDollars(totalEarnings)}</CardTitle>
+                      <CardTitle className="text-3xl font-display">{formatCurrency(totalEarnings)}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-center text-xs text-green-600 font-medium">
@@ -848,7 +836,7 @@ export default function Dashboard() {
                             </div>
                           </div>
                           {/* DISPLAY CORRECT DOLLAR AMOUNT */}
-                          <p className="text-sm font-bold text-green-600">+{formatCentsToDollars(getRentalCostCents(rental))}</p>
+                          <p className="text-sm font-bold text-green-600">+{formatCurrency(getDisplayDollars(rental))}</p>
                         </div>
                       ))}
                   </div>
