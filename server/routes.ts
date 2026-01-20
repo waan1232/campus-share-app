@@ -88,6 +88,9 @@ export async function registerRoutes(
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS start_date TIMESTAMP;
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS end_date TIMESTAMP;
 
+      -- Price Override Column for Rentals
+      ALTER TABLE rentals ADD COLUMN IF NOT EXISTS total_price INTEGER;
+
       -- Withdrawal Table
       CREATE TABLE IF NOT EXISTS withdrawals (
         id SERIAL PRIMARY KEY,
@@ -131,13 +134,12 @@ export async function registerRoutes(
              last_name: user.name.split(" ").slice(1).join(" ") || "",
           },
 
-          // --- NEW: SKIP THE BUSINESS DETAILS SCREEN ---
+          // --- SKIP BUSINESS DETAILS ---
           business_profile: {
             mcc: "7394", // Code for "Equipment Rental & Leasing"
-            url: "https://campusshareapp.com", // Use your platform URL since students don't have one
+            url: "https://campusshareapp.com",
             product_description: "Peer-to-peer rental of college supplies and equipment.",
           },
-          // ---------------------------------------------
 
           capabilities: {
             card_payments: { requested: true },
@@ -149,7 +151,7 @@ export async function registerRoutes(
         await pool.query(`UPDATE users SET stripe_account_id = $1 WHERE id = $2`, [accountId, user.id]);
       }
 
-      // Create the Account Link (The URL Stripe sends back)
+      // Create the Account Link
       const accountLink = await stripe.accountLinks.create({
         account: accountId,
         refresh_url: `${process.env.BASE_URL || 'http://localhost:5000'}/account`,
@@ -211,7 +213,6 @@ export async function registerRoutes(
     }
 
     // 2. Fix the Image URL
-    // If image is "/uploads/file.jpg", turn it into "https://campusshareapp.com/uploads/file.jpg"
     let fullImageUrl = image;
     if (image && !image.startsWith("http")) {
         fullImageUrl = `${baseUrl}${image.startsWith("/") ? "" : "/"}${image}`;
@@ -227,7 +228,6 @@ export async function registerRoutes(
               currency: "usd",
               product_data: {
                 name: `Rental: ${title}`,
-                // Send the FULL URL to Stripe
                 images: fullImageUrl ? [fullImageUrl] : [],
               },
               unit_amount: totalAmount,
@@ -260,7 +260,6 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
     try {
-      // Calculate earnings from completed rentals (simplified logic)
       const result = await pool.query(
         `SELECT r.*, i.price_per_day FROM rentals r JOIN items i ON r.item_id = i.id WHERE i.owner_id = $1`,
         [userId]
@@ -268,7 +267,6 @@ export async function registerRoutes(
       let totalEarned = 0;
       result.rows.forEach(r => totalEarned += r.price_per_day);
       
-      // Calculate withdrawals
       const wResult = await pool.query(`SELECT SUM(amount) as total FROM withdrawals WHERE user_id = $1`, [userId]);
       const totalWithdrawn = parseInt(wResult.rows[0].total || '0');
       
@@ -279,8 +277,6 @@ export async function registerRoutes(
   // Withdraw Request
   app.post("/api/withdraw", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
-    // Just a placeholder since Stripe Connect handles auto payouts, 
-    // but kept to prevent frontend crashing if called.
     res.sendStatus(200); 
   });
 
@@ -316,16 +312,12 @@ export async function registerRoutes(
   // 1. Forgot Username
   app.post("/api/auth/forgot-username", async (req, res) => {
     const { email } = req.body;
-    // Find user (case insensitive email search)
     const result = await pool.query(`SELECT username FROM users WHERE LOWER(email) = LOWER($1)`, [email]);
     const user = result.rows[0];
 
     if (user) {
-      // Send email (don't await, just let it send in background to be fast)
       sendUsernameRecoveryEmail(email, user.username);
     }
-    
-    // Always say "sent" for security (so hackers can't check which emails exist)
     res.json({ message: "If that email exists, we sent the username." });
   });
 
@@ -337,11 +329,9 @@ export async function registerRoutes(
 
     if (user) {
       const code = Math.floor(100000 + Math.random() * 900000).toString();
-      // Store code in the database (reusing the verification_code column)
       await pool.query(`UPDATE users SET verification_code = $1 WHERE id = $2`, [code, user.id]);
       sendPasswordResetEmail(email, code);
     }
-
     res.json({ message: "If that email exists, we sent a reset code." });
   });
 
@@ -349,7 +339,6 @@ export async function registerRoutes(
   app.post("/api/auth/reset-password", async (req, res) => {
     const { email, code, newPassword } = req.body;
     
-    // Find user with matching email AND code
     const result = await pool.query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND verification_code = $2`, [email, code]);
     const user = result.rows[0];
 
@@ -357,7 +346,6 @@ export async function registerRoutes(
       return res.status(400).json({ message: "Invalid code or email" });
     }
 
-    // Hash new password
     const { scrypt, randomBytes } = await import("crypto");
     const { promisify } = await import("util");
     const scryptAsync = promisify(scrypt);
@@ -365,7 +353,6 @@ export async function registerRoutes(
     const buf = (await scryptAsync(newPassword, salt, 64)) as Buffer;
     const hashedPassword = `${buf.toString("hex")}.${salt}`;
 
-    // Update password and clear code
     await pool.query(`UPDATE users SET password = $1, verification_code = NULL WHERE id = $2`, [hashedPassword, user.id]);
 
     res.json({ message: "Password updated! You can now log in." });
@@ -582,7 +569,6 @@ export async function registerRoutes(
         messageContent = `The rental for "${rental.title}" has been marked as returned. Thanks for using CampusShare!`;
       }
 
-      // Only send a message if we defined one above
       if (messageContent) {
         await pool.query(
           `INSERT INTO messages (sender_id, receiver_id, content, item_id, sent_at, read)
@@ -608,7 +594,7 @@ export async function registerRoutes(
         `SELECT r.id, r.item_id as "itemId", r.renter_id as "renterId", 
                 r.start_date as "startDate", r.end_date as "endDate", 
                 r.status, r.created_at as "createdAt", 
-                r.total_price as "totalPrice",  -- <--- CRITICAL ADDITION
+                r.total_price as "totalPrice", 
                 row_to_json(i.*) as item
          FROM rentals r
          JOIN items i ON r.item_id = i.id
@@ -622,7 +608,7 @@ export async function registerRoutes(
         `SELECT r.id, r.item_id as "itemId", r.renter_id as "renterId", 
                 r.start_date as "startDate", r.end_date as "endDate", 
                 r.status, r.created_at as "createdAt", 
-                r.total_price as "totalPrice", -- <--- CRITICAL ADDITION
+                r.total_price as "totalPrice",
                 row_to_json(i.*) as item,
                 json_build_object('id', u.id, 'username', u.username, 'name', u.name, 'email', u.email) as renter
          FROM rentals r
@@ -641,23 +627,56 @@ export async function registerRoutes(
   });
 
   // --- MESSAGING SYSTEM ROUTES ---
-  // Update message offer status AND Auto-Approve Rental
+  app.post("/api/messages", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
+    const senderId = (req.user as any).id;
+    const { receiverId, content, itemId, offerPrice } = req.body;
+
+    try {
+      const result = await pool.query(
+        `INSERT INTO messages (sender_id, receiver_id, content, item_id, offer_price, offer_status, sent_at, read)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), false)
+         RETURNING *`,
+        [
+            senderId, 
+            receiverId, 
+            content, 
+            itemId || null, 
+            offerPrice || null, 
+            offerPrice ? 'pending' : 'none'
+        ]
+      );
+      
+      const newMessage = result.rows[0];
+
+      const fullMessageResult = await pool.query(
+        `SELECT m.*, u_sender.username as sender_name, u_receiver.username as receiver_name
+         FROM messages m
+         JOIN users u_sender ON m.sender_id = u_sender.id
+         JOIN users u_receiver ON m.receiver_id = u_receiver.id
+         WHERE m.id = $1`,
+        [newMessage.id]
+      );
+
+      res.json(fullMessageResult.rows[0]);
+    } catch (error: any) {
+      console.error("Error sending message:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.patch("/api/messages/:id/offer", async (req, res) => {
     const { offer_status } = req.body;
     const messageId = parseInt(req.params.id);
 
     try {
-      // 1. Update the message status
       const result = await pool.query(
         `UPDATE messages SET offer_status = $1 WHERE id = $2 RETURNING *`,
         [offer_status, messageId]
       );
       const message = result.rows[0];
 
-      // 2. IF ACCEPTED: Automatically approve the pending rental for this item/renter
       if (offer_status === 'accepted') {
-        // We find the 'pending' rental for this item and renter.
-        // We do NOT check start_date/end_date strictly to avoid timezone mismatches.
         await pool.query(
             `UPDATE rentals 
              SET status = 'approved', total_price = $1 
@@ -665,9 +684,9 @@ export async function registerRoutes(
                AND renter_id = $3 
                AND status = 'pending'`,
             [
-                message.offer_price, // Use the negotiated price
+                message.offer_price,
                 message.item_id,
-                message.sender_id    // The sender of the offer is the renter
+                message.sender_id
             ]
         );
       }
