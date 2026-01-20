@@ -14,7 +14,6 @@ import { sendVerificationEmail, sendUsernameRecoveryEmail, sendPasswordResetEmai
 import Stripe from "stripe";
 
 // Initialize Stripe
-// We use a fallback key to prevent crashes during build, but functionality requires the real key
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder", {
   apiVersion: "2025-01-27.acacia", 
 });
@@ -24,7 +23,6 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
-  // Auth
   setupAuth(app);
 
   // --- SETUP FILE STORAGE ---
@@ -53,7 +51,7 @@ export async function registerRoutes(
     res.json({ imageUrl });
   });
 
-  // --- AUTOMATIC DATABASE SCHEMA UPDATES ---
+  // --- DATABASE SCHEMA ---
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -66,32 +64,24 @@ export async function registerRoutes(
         read BOOLEAN DEFAULT FALSE
       );
       
-      -- Add School, Profile, Payment & Offer Columns
       ALTER TABLE users ADD COLUMN IF NOT EXISTS school TEXT DEFAULT 'General Public';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS venmo_handle TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS cashapp_tag TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS location TEXT;
-
-      -- Verification Columns
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code TEXT;
-
-      -- STRIPE CONNECT COLUMNS (Crucial)
       ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_account_id TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_stripe_verified BOOLEAN DEFAULT FALSE;
 
-      -- New Columns for Bargaining
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS item_id INTEGER REFERENCES items(id);
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS offer_price INTEGER;
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS offer_status TEXT DEFAULT 'none';
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS start_date TIMESTAMP;
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS end_date TIMESTAMP;
 
-      -- Price Override Column for Rentals
       ALTER TABLE rentals ADD COLUMN IF NOT EXISTS total_price INTEGER;
 
-      -- Withdrawal Table
       CREATE TABLE IF NOT EXISTS withdrawals (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),
@@ -102,8 +92,7 @@ export async function registerRoutes(
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    
-    console.log("Database schema verified (Stripe Connect & Withdrawals Active).");
+    console.log("Database schema verified.");
   } catch (err) {
     console.error("Error updating schema:", err);
   }
@@ -112,7 +101,6 @@ export async function registerRoutes(
   //  STRIPE CONNECT ROUTES
   // ==========================================
 
-  // 1. ONBOARDING
   app.post("/api/stripe/onboard", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const user = req.user as any;
@@ -120,27 +108,22 @@ export async function registerRoutes(
     try {
       let accountId = user.stripe_account_id; 
 
-      // Create account if not exists
       if (!accountId) {
         const account = await stripe.accounts.create({
           type: "express",
           country: "US",
           email: user.email,
           business_type: "individual",
-          
           individual: {
              email: user.email,
              first_name: user.name.split(" ")[0],
              last_name: user.name.split(" ").slice(1).join(" ") || "",
           },
-
-          // --- SKIP BUSINESS DETAILS ---
           business_profile: {
-            mcc: "7394", // Code for "Equipment Rental & Leasing"
+            mcc: "7394",
             url: "https://campusshareapp.com",
-            product_description: "Peer-to-peer rental of college supplies and equipment.",
+            product_description: "Peer-to-peer rental of college supplies.",
           },
-
           capabilities: {
             card_payments: { requested: true },
             transfers: { requested: true },
@@ -151,7 +134,6 @@ export async function registerRoutes(
         await pool.query(`UPDATE users SET stripe_account_id = $1 WHERE id = $2`, [accountId, user.id]);
       }
 
-      // Create the Account Link
       const accountLink = await stripe.accountLinks.create({
         account: accountId,
         refresh_url: `${process.env.BASE_URL || 'http://localhost:5000'}/account`,
@@ -166,7 +148,6 @@ export async function registerRoutes(
     }
   });
 
-  // 2. CHECK STATUS
   app.get("/api/stripe/check-status", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const user = req.user as any;
@@ -189,13 +170,11 @@ export async function registerRoutes(
     }
   });
 
-  // 3. CHECKOUT SESSION (Fixed Image URL)
   app.post("/api/create-checkout-session", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     
     const { rentalId, title, price, days, image, ownerId } = req.body;
     
-    // Get Owner Stripe ID
     const ownerResult = await pool.query(`SELECT stripe_account_id FROM users WHERE id = $1`, [ownerId]);
     const ownerStripeId = ownerResult.rows[0]?.stripe_account_id;
 
@@ -206,13 +185,11 @@ export async function registerRoutes(
     const totalAmount = Math.round(price * days); 
     const platformFee = Math.round(totalAmount * 0.15);
 
-    // 1. Ensure Base URL is valid HTTPS
     let baseUrl = process.env.BASE_URL || "http://localhost:5000";
     if (!baseUrl.startsWith("http")) {
       baseUrl = `https://${baseUrl}`;
     }
 
-    // 2. Fix the Image URL
     let fullImageUrl = image;
     if (image && !image.startsWith("http")) {
         fullImageUrl = `${baseUrl}${image.startsWith("/") ? "" : "/"}${image}`;
@@ -253,7 +230,7 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  //  CORE APP ROUTES
+  //  CORE ROUTES
   // ==========================================
 
   app.get("/api/balance", async (req, res) => {
@@ -274,13 +251,11 @@ export async function registerRoutes(
     } catch (e) { res.status(500).json({ error: "Error" }); }
   });
 
-  // Withdraw Request
   app.post("/api/withdraw", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     res.sendStatus(200); 
   });
 
-  // Verify Account
   app.post("/api/verify-account", async (req, res) => {
       if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
       const { code } = req.body;
@@ -308,25 +283,20 @@ export async function registerRoutes(
   });
 
   // --- RECOVERY ROUTES ---
-
-  // 1. Forgot Username
   app.post("/api/auth/forgot-username", async (req, res) => {
     const { email } = req.body;
     const result = await pool.query(`SELECT username FROM users WHERE LOWER(email) = LOWER($1)`, [email]);
     const user = result.rows[0];
-
     if (user) {
       sendUsernameRecoveryEmail(email, user.username);
     }
     res.json({ message: "If that email exists, we sent the username." });
   });
 
-  // 2. Forgot Password - Request Code
   app.post("/api/auth/forgot-password", async (req, res) => {
     const { email } = req.body;
     const result = await pool.query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1)`, [email]);
     const user = result.rows[0];
-
     if (user) {
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       await pool.query(`UPDATE users SET verification_code = $1 WHERE id = $2`, [code, user.id]);
@@ -335,16 +305,11 @@ export async function registerRoutes(
     res.json({ message: "If that email exists, we sent a reset code." });
   });
 
-  // 3. Forgot Password - Confirm Reset
   app.post("/api/auth/reset-password", async (req, res) => {
     const { email, code, newPassword } = req.body;
-    
     const result = await pool.query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND verification_code = $2`, [email, code]);
     const user = result.rows[0];
-
-    if (!user) {
-      return res.status(400).json({ message: "Invalid code or email" });
-    }
+    if (!user) return res.status(400).json({ message: "Invalid code or email" });
 
     const { scrypt, randomBytes } = await import("crypto");
     const { promisify } = await import("util");
@@ -354,7 +319,6 @@ export async function registerRoutes(
     const hashedPassword = `${buf.toString("hex")}.${salt}`;
 
     await pool.query(`UPDATE users SET password = $1, verification_code = NULL WHERE id = $2`, [hashedPassword, user.id]);
-
     res.json({ message: "Password updated! You can now log in." });
   });
 
@@ -372,15 +336,11 @@ export async function registerRoutes(
     } catch (error) { res.status(500).json({ error: "Failed" }); }
   });
 
-  // Change Password
   app.patch("/api/user/password", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
     const { newPassword } = req.body;
-
-    if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
-    }
+    if (!newPassword || newPassword.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
 
     try {
       const { scrypt, randomBytes } = await import("crypto");
@@ -397,7 +357,6 @@ export async function registerRoutes(
     }
   });
 
-  // Delete Account
   app.delete("/api/user", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
@@ -528,13 +487,12 @@ export async function registerRoutes(
     } catch (e) { res.status(400).json({ message: "Invalid input" }); }
   });
 
-  // Update rental status (with optional price override) AND Notify Renter
+  // Update rental status AND Notify Renter
   app.patch("/api/rentals/:id/status", async (req, res) => {
     const { status, totalPrice } = req.body;
     const rentalId = parseInt(req.params.id);
 
     try {
-      // 1. Get Rental Details first (so we know who to message)
       const rentalResult = await pool.query(
         `SELECT r.*, i.title, i.owner_id, i.id as item_id, r.renter_id
          FROM rentals r 
@@ -546,7 +504,6 @@ export async function registerRoutes(
 
       if (!rental) return res.status(404).json({ error: "Rental not found" });
 
-      // 2. Update Rental Status (and Price if provided)
       if (totalPrice !== undefined && !isNaN(totalPrice)) {
         await pool.query(
           `UPDATE rentals SET status = $1, total_price = $2 WHERE id = $3`,
@@ -559,7 +516,6 @@ export async function registerRoutes(
         );
       }
 
-      // 3. Send Notification Message to the Renter
       let messageContent = "";
       if (status === "approved") {
         messageContent = `Great news! Your request for "${rental.title}" has been approved. You can now proceed to payment in your Dashboard.`;
@@ -584,12 +540,11 @@ export async function registerRoutes(
     }
   });
 
-  // Get all rentals for the user (as owner or renter)
+  // Get rentals with Total Price
   app.get("/api/rentals", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     
     try {
-      // 1. Outgoing (Items I am renting from others)
       const outgoing = await pool.query(
         `SELECT r.id, r.item_id as "itemId", r.renter_id as "renterId", 
                 r.start_date as "startDate", r.end_date as "endDate", 
@@ -603,12 +558,11 @@ export async function registerRoutes(
         [req.user!.id]
       );
 
-      // 2. Incoming (Items others are renting from me)
       const incoming = await pool.query(
         `SELECT r.id, r.item_id as "itemId", r.renter_id as "renterId", 
                 r.start_date as "startDate", r.end_date as "endDate", 
                 r.status, r.created_at as "createdAt", 
-                r.total_price as "totalPrice",
+                r.total_price as "totalPrice", 
                 row_to_json(i.*) as item,
                 json_build_object('id', u.id, 'username', u.username, 'name', u.name, 'email', u.email) as renter
          FROM rentals r
@@ -627,15 +581,18 @@ export async function registerRoutes(
   });
 
   // --- MESSAGING SYSTEM ROUTES ---
+  
+  // 1. Send Message (Now includes Dates!)
   app.post("/api/messages", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const senderId = (req.user as any).id;
-    const { receiverId, content, itemId, offerPrice } = req.body;
+    // Extract dates from body
+    const { receiverId, content, itemId, offerPrice, startDate, endDate } = req.body;
 
     try {
       const result = await pool.query(
-        `INSERT INTO messages (sender_id, receiver_id, content, item_id, offer_price, offer_status, sent_at, read)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW(), false)
+        `INSERT INTO messages (sender_id, receiver_id, content, item_id, offer_price, offer_status, start_date, end_date, sent_at, read)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), false)
          RETURNING *`,
         [
             senderId, 
@@ -643,7 +600,9 @@ export async function registerRoutes(
             content, 
             itemId || null, 
             offerPrice || null, 
-            offerPrice ? 'pending' : 'none'
+            offerPrice ? 'pending' : 'none',
+            startDate || null, // Save start date
+            endDate || null    // Save end date
         ]
       );
       
@@ -665,6 +624,7 @@ export async function registerRoutes(
     }
   });
 
+  // 2. Accept Offer (Creates Rental if Missing)
   app.patch("/api/messages/:id/offer", async (req, res) => {
     const { offer_status } = req.body;
     const messageId = parseInt(req.params.id);
@@ -677,7 +637,8 @@ export async function registerRoutes(
       const message = result.rows[0];
 
       if (offer_status === 'accepted') {
-        await pool.query(
+        // Try to find pending rental first
+        const updateResult = await pool.query(
             `UPDATE rentals 
              SET status = 'approved', total_price = $1 
              WHERE item_id = $2 
@@ -689,6 +650,21 @@ export async function registerRoutes(
                 message.sender_id
             ]
         );
+
+        // If no rental found (user negotiated via chat without requesting first), create it now.
+        if (updateResult.rowCount === 0 && message.start_date && message.end_date) {
+            await pool.query(
+                `INSERT INTO rentals (item_id, renter_id, start_date, end_date, total_price, status)
+                 VALUES ($1, $2, $3, $4, $5, 'approved')`,
+                [
+                    message.item_id,
+                    message.sender_id,
+                    message.start_date,
+                    message.end_date,
+                    message.offer_price
+                ]
+            );
+        }
       }
 
       res.json(message);
