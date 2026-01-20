@@ -7,8 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency } from "@/lib/utils";
-import { format, isWithinInterval, startOfDay, startOfMonth, startOfYear, isSameDay, isSameMonth, isSameYear } from "date-fns";
+import { format, startOfDay, startOfMonth, startOfYear, isSameDay, isSameMonth, isSameYear } from "date-fns";
 import { Loader2, Package, CalendarCheck, AlertCircle, CheckCircle, XCircle, Heart, Trash2, CalendarOff, BarChart3, TrendingUp } from "lucide-react";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -26,6 +25,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ImageUpload } from "@/components/ImageUpload"; 
 
+// Explicit formatter that takes CENTS and outputs DOLLARS
+const formatCentsToDollars = (cents: number) => {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+    }).format(cents / 100);
+};
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -46,23 +52,15 @@ export default function Dashboard() {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
   const [earningsView, setEarningsView] = useState<'day' | 'month' | 'year' | 'all'>('month');
 
-  // --- PRICE HELPERS (CRITICAL FIX) ---
-  
-  // 1. Get the Raw Cost in CENTS (For Database & Stripe Logic)
+  // --- HELPER: CALCULATE TRUE RENTAL COST IN CENTS ---
   const getRentalCostCents = (r: any) => {
-    // If we have a negotiated total price, that is the authority.
+    // 1. If we have a negotiated total price, use it directly.
     if (r.totalPrice !== undefined && r.totalPrice !== null) {
         return r.totalPrice; 
     }
-    // Otherwise fallback to Days * Daily Rate
+    // 2. Fallback to Days * Rate calculation
     const days = Math.max(1, Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / (1000 * 60 * 60 * 24)));
     return r.item.pricePerDay * days;
-  };
-
-  // 2. Get the Display Price in DOLLARS (For UI Text only)
-  // Divides cents by 100 because formatCurrency usually expects dollars, or raw display needs decimals
-  const getDisplayPrice = (r: any) => {
-    return getRentalCostCents(r) / 100;
   };
 
   const earningsData = useMemo(() => {
@@ -70,8 +68,8 @@ export default function Dashboard() {
     
     const completedRentals = rentals.incoming.filter(r => r.status === 'completed' || r.status === 'approved');
     
-    // Helper to sum up earnings in DOLLARS for the chart
-    const sumDollars = (list: any[]) => list.reduce((sum, r) => sum + getDisplayPrice(r), 0);
+    // Helper to sum up earnings in DOLLARS for the chart (Charts expect dollars)
+    const sumDollars = (list: any[]) => list.reduce((sum, r) => sum + (getRentalCostCents(r) / 100), 0);
 
     if (earningsView === 'day') {
       const last7Days = Array.from({ length: 7 }, (_, i) => {
@@ -113,9 +111,10 @@ export default function Dashboard() {
 
   const totalEarnings = useMemo(() => {
     if (!rentals?.incoming) return 0;
+    // Return total in CENTS
     return rentals.incoming
       .filter(r => r.status === 'completed' || r.status === 'approved')
-      .reduce((sum, r) => sum + getDisplayPrice(r), 0);
+      .reduce((sum, r) => sum + getRentalCostCents(r), 0);
   }, [rentals]);
 
   const blockMutation = useMutation({
@@ -200,7 +199,7 @@ export default function Dashboard() {
                 </Link>
               </CardHeader>
               <CardContent className="p-4 pt-0 text-sm">
-                <p className="font-bold text-primary">{formatCurrency(item.pricePerDay / 100)}/day</p>
+                <p className="font-bold text-primary">{formatCentsToDollars(item.pricePerDay)}/day</p>
               </CardContent>
             </Card>
           ))
@@ -214,12 +213,15 @@ export default function Dashboard() {
     
     // State for the Approval Modal
     const [approvingRental, setApprovingRental] = useState<any>(null);
-    const [approvalPrice, setApprovalPrice] = useState<number>(0);
+    const [approvalPrice, setApprovalPrice] = useState<number>(0); // In DOLLARS
 
     const handleOpenApproval = (rental: any) => {
+        // Get total in cents
+        const totalCents = getRentalCostCents(rental);
+        
         setApprovingRental(rental);
         // Pre-fill input with DOLLARS
-        setApprovalPrice(getDisplayPrice(rental)); 
+        setApprovalPrice(totalCents / 100); 
     };
 
     const handleConfirmApproval = () => {
@@ -266,7 +268,7 @@ export default function Dashboard() {
                     </span>
                     <span className="font-medium text-primary">
                       {/* Display in Dollars */}
-                      {formatCurrency(getDisplayPrice(rental))}
+                      {formatCentsToDollars(getRentalCostCents(rental))}
                     </span>
                   </div>
                 </div>
@@ -372,9 +374,10 @@ export default function Dashboard() {
                             {format(new Date(rental.startDate), "MMM d")} - {format(new Date(rental.endDate), "MMM d")}
                         </span>
                         </div>
-                        {/* Display Price: Dollars */}
+                        
+                        {/* DISPLAY PRICE LOGIC: Always shows Correct DOLLAR amount */}
                         <div className="mt-2 font-bold text-primary">
-                            {isDeal ? `Total: ${formatCurrency(finalCostCents / 100)}` : `${formatCurrency(rental.item.pricePerDay / 100)}/day`}
+                            {isDeal ? `Total: ${formatCentsToDollars(finalCostCents)}` : `${formatCentsToDollars(rental.item.pricePerDay)}/day`}
                         </div>
                     </CardContent>
                 </div>
@@ -382,16 +385,17 @@ export default function Dashboard() {
                 {/* --- PAY BUTTON LOGIC --- */}
                 {rental.status === 'approved' && (
                     <CardFooter className="p-4 pt-0">
+                        {/* PAY BUTTON: PASS CENTS! 
+                            If isDeal, we pass total CENTS and 1 day.
+                            If standard, we pass daily CENTS and N days. 
+                        */}
                         <PayButton 
-                            rentalId={rental.id}
-                            title={rental.item.title}
-                            // If it's a Deal (Fixed Price), pass that exact price (in CENTS) and days=1.
-                            // If it's standard, pass the daily rate (in CENTS) and the calculated days.
-                            // PayButton handles the final math (price * days).
+                            rentalId={rental.id} 
+                            title={rental.item.title} 
                             pricePerDay={isDeal ? finalCostCents : rental.item.pricePerDay} 
-                            days={isDeal ? 1 : calculatedDays}
-                            imageUrl={rental.item.imageUrl}
-                            ownerId={rental.item.ownerId}
+                            days={isDeal ? 1 : calculatedDays} 
+                            imageUrl={rental.item.imageUrl} 
+                            ownerId={rental.item.ownerId} 
                         />
                     </CardFooter>
                 )}
@@ -751,7 +755,7 @@ export default function Dashboard() {
                   <Card className="bg-primary/5 border-primary/20">
                     <CardHeader className="pb-2">
                       <CardDescription className="text-primary/70">Total Revenue</CardDescription>
-                      <CardTitle className="text-3xl font-display">{formatCurrency(totalEarnings)}</CardTitle>
+                      <CardTitle className="text-3xl font-display">{formatCentsToDollars(totalEarnings)}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-center text-xs text-green-600 font-medium">
@@ -843,7 +847,8 @@ export default function Dashboard() {
                               <p className="text-xs text-muted-foreground">{format(new Date(rental.startDate), "MMM d, yyyy")}</p>
                             </div>
                           </div>
-                          <p className="text-sm font-bold text-green-600">+{formatCurrency(getDisplayPrice(rental))}</p>
+                          {/* DISPLAY CORRECT DOLLAR AMOUNT */}
+                          <p className="text-sm font-bold text-green-600">+{formatCentsToDollars(getRentalCostCents(rental))}</p>
                         </div>
                       ))}
                   </div>
