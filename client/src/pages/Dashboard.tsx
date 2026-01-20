@@ -344,7 +344,7 @@ export default function Dashboard() {
     );
   };
 
-  const MyRentals = () => {
+ const MyRentals = () => {
     const myRentals = rentals?.outgoing || [];
     
     return (
@@ -358,8 +358,14 @@ export default function Dashboard() {
           </div>
         ) : (
           myRentals.map(rental => {
-            const isDeal = rental.totalPrice !== undefined && rental.totalPrice !== null;
-            const finalCostCents = getRentalCostCents(rental); // CENTS
+            // Check if this rental has a negotiated fixed price (Deal)
+            const price = rental.totalPrice ?? rental.total_price;
+            const isDeal = price !== undefined && price !== null;
+            
+            // Get the final cost in CENTS
+            const finalCostCents = getRentalCost(rental); 
+            
+            // Calculate days for the standard rate fallback logic
             const calculatedDays = Math.max(1, Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)));
 
             return (
@@ -385,22 +391,24 @@ export default function Dashboard() {
                         </span>
                         </div>
                         
-                        {/* VISUAL: Show DOLLARS */}
+                        {/* VISUAL DISPLAY: We divide by 100 here to show Dollars in the UI */}
                         <div className="mt-2 font-bold text-primary">
-                            {isDeal ? `Total: ${formatCurrency(finalCostCents / 100)}` : `${formatCurrency(rental.item.pricePerDay / 100)}/day`}
+                            {isDeal 
+                                ? `Total: ${formatCurrency(finalCostCents / 100)}` 
+                                : `${formatCurrency(rental.item.pricePerDay / 100)}/day`
+                            }
                         </div>
                     </CardContent>
                 </div>
 
-                {/* --- PAY BUTTON LOGIC --- */}
+                {/* PAY BUTTON LOGIC */}
                 {rental.status === 'approved' && (
                     <CardFooter className="p-4 pt-0">
                         <PayButton 
                             rentalId={rental.id} 
                             title={rental.item.title} 
-                            // STRIPE: Send CENTS.
-                            // If it's a deal, send Total Cents and days=1.
-                            // If it's standard, send Daily Cents and N days.
+                            // If it's a Deal, pass the TOTAL CENTS and 1 day.
+                            // If standard, pass DAILY RATE CENTS and N days.
                             pricePerDay={isDeal ? finalCostCents : rental.item.pricePerDay} 
                             days={isDeal ? 1 : calculatedDays} 
                             imageUrl={rental.item.imageUrl} 
