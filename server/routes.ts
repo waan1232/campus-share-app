@@ -14,7 +14,6 @@ import { sendVerificationEmail, sendUsernameRecoveryEmail, sendPasswordResetEmai
 import Stripe from "stripe";
 
 // Initialize Stripe
-// We use a fallback key to prevent crashes during build, but functionality requires the real key
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder", {
   apiVersion: "2025-01-27.acacia", 
 });
@@ -24,7 +23,6 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
-  // Auth
   setupAuth(app);
 
   // --- SETUP FILE STORAGE ---
@@ -53,7 +51,7 @@ export async function registerRoutes(
     res.json({ imageUrl });
   });
 
-  // --- AUTOMATIC DATABASE SCHEMA UPDATES ---
+  // --- DATABASE SCHEMA ---
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -66,32 +64,24 @@ export async function registerRoutes(
         read BOOLEAN DEFAULT FALSE
       );
       
-      -- Add School, Profile, Payment & Offer Columns
       ALTER TABLE users ADD COLUMN IF NOT EXISTS school TEXT DEFAULT 'General Public';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS venmo_handle TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS cashapp_tag TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS location TEXT;
-
-      -- Verification Columns
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code TEXT;
-
-      -- STRIPE CONNECT COLUMNS (Crucial)
       ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_account_id TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_stripe_verified BOOLEAN DEFAULT FALSE;
 
-      -- New Columns for Bargaining
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS item_id INTEGER REFERENCES items(id);
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS offer_price INTEGER;
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS offer_status TEXT DEFAULT 'none';
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS start_date TIMESTAMP;
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS end_date TIMESTAMP;
 
-      -- Price Override Column for Rentals
       ALTER TABLE rentals ADD COLUMN IF NOT EXISTS total_price INTEGER;
 
-      -- Withdrawal Table
       CREATE TABLE IF NOT EXISTS withdrawals (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),
@@ -102,8 +92,7 @@ export async function registerRoutes(
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    
-    console.log("Database schema verified (Stripe Connect & Withdrawals Active).");
+    console.log("Database schema verified.");
   } catch (err) {
     console.error("Error updating schema:", err);
   }
@@ -112,7 +101,6 @@ export async function registerRoutes(
   //  STRIPE CONNECT ROUTES
   // ==========================================
 
-  // 1. ONBOARDING
   app.post("/api/stripe/onboard", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const user = req.user as any;
@@ -120,27 +108,22 @@ export async function registerRoutes(
     try {
       let accountId = user.stripe_account_id; 
 
-      // Create account if not exists
       if (!accountId) {
         const account = await stripe.accounts.create({
           type: "express",
           country: "US",
           email: user.email,
           business_type: "individual",
-          
           individual: {
              email: user.email,
              first_name: user.name.split(" ")[0],
              last_name: user.name.split(" ").slice(1).join(" ") || "",
           },
-
-          // --- SKIP BUSINESS DETAILS ---
           business_profile: {
-            mcc: "7394", // Code for "Equipment Rental & Leasing"
+            mcc: "7394",
             url: "https://campusshareapp.com",
             product_description: "Peer-to-peer rental of college supplies.",
           },
-
           capabilities: {
             card_payments: { requested: true },
             transfers: { requested: true },
@@ -151,7 +134,6 @@ export async function registerRoutes(
         await pool.query(`UPDATE users SET stripe_account_id = $1 WHERE id = $2`, [accountId, user.id]);
       }
 
-      // Create the Account Link
       const accountLink = await stripe.accountLinks.create({
         account: accountId,
         refresh_url: `${process.env.BASE_URL || 'http://localhost:5000'}/account`,
@@ -166,7 +148,6 @@ export async function registerRoutes(
     }
   });
 
-  // 2. CHECK STATUS
   app.get("/api/stripe/check-status", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const user = req.user as any;
@@ -189,13 +170,11 @@ export async function registerRoutes(
     }
   });
 
-  // 3. CHECKOUT SESSION (Fixed Image URL)
   app.post("/api/create-checkout-session", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     
     const { rentalId, title, price, days, image, ownerId } = req.body;
     
-    // Get Owner Stripe ID
     const ownerResult = await pool.query(`SELECT stripe_account_id FROM users WHERE id = $1`, [ownerId]);
     const ownerStripeId = ownerResult.rows[0]?.stripe_account_id;
 
@@ -203,16 +182,16 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Owner has not set up payouts yet." });
     }
 
+    // Determine total amount
+    // Note: If 'days' is passed as 1 (which Dashboard does for deals), totalAmount = price * 1.
     const totalAmount = Math.round(price * days); 
     const platformFee = Math.round(totalAmount * 0.15);
 
-    // 1. Ensure Base URL is valid HTTPS
     let baseUrl = process.env.BASE_URL || "http://localhost:5000";
     if (!baseUrl.startsWith("http")) {
       baseUrl = `https://${baseUrl}`;
     }
 
-    // 2. Fix the Image URL
     let fullImageUrl = image;
     if (image && !image.startsWith("http")) {
         fullImageUrl = `${baseUrl}${image.startsWith("/") ? "" : "/"}${image}`;
@@ -260,13 +239,26 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
     try {
-      // Calculate earnings from completed rentals (simplified logic)
+      // Calculate from rentals with total_price
+      // Only count 'approved' or 'completed' as valid earnings context for balance
       const result = await pool.query(
-        `SELECT r.*, i.price_per_day FROM rentals r JOIN items i ON r.item_id = i.id WHERE i.owner_id = $1`,
+        `SELECT r.total_price, r.start_date, r.end_date, i.price_per_day
+         FROM rentals r 
+         JOIN items i ON r.item_id = i.id 
+         WHERE i.owner_id = $1 AND r.status IN ('approved', 'completed')`,
         [userId]
       );
+
       let totalEarned = 0;
-      result.rows.forEach(r => totalEarned += r.price_per_day);
+      result.rows.forEach(r => {
+          if (r.total_price) {
+              totalEarned += r.total_price;
+          } else {
+              // Fallback calculation
+              const days = Math.max(1, Math.ceil((new Date(r.end_date).getTime() - new Date(r.start_date).getTime()) / (1000 * 60 * 60 * 24)));
+              totalEarned += (r.price_per_day * days);
+          }
+      });
       
       const wResult = await pool.query(`SELECT SUM(amount) as total FROM withdrawals WHERE user_id = $1`, [userId]);
       const totalWithdrawn = parseInt(wResult.rows[0].total || '0');
@@ -275,13 +267,11 @@ export async function registerRoutes(
     } catch (e) { res.status(500).json({ error: "Error" }); }
   });
 
-  // Withdraw Request
   app.post("/api/withdraw", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     res.sendStatus(200); 
   });
 
-  // Verify Account
   app.post("/api/verify-account", async (req, res) => {
       if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
       const { code } = req.body;
@@ -362,7 +352,6 @@ export async function registerRoutes(
     } catch (error) { res.status(500).json({ error: "Failed" }); }
   });
 
-  // Change Password
   app.patch("/api/user/password", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
@@ -384,7 +373,6 @@ export async function registerRoutes(
     }
   });
 
-  // Delete Account
   app.delete("/api/user", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
@@ -394,17 +382,34 @@ export async function registerRoutes(
     } catch (error) { res.status(500).json({ error: "Failed" }); }
   });
 
+  // --- EARNINGS ROUTE ---
   app.get("/api/earnings", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
     const userId = (req.user as any).id;
     try {
       const result = await pool.query(
-        `SELECT r.*, i.title, i.price_per_day, u.username as renter_name
-         FROM rentals r JOIN items i ON r.item_id = i.id JOIN users u ON r.renter_id = u.id
-         WHERE i.owner_id = $1 ORDER BY r.start_date DESC`, [userId]
+        `SELECT r.*, i.title, i.price_per_day, u.username as renter_name,
+                COALESCE(r.total_price, 0) as total_price_val
+         FROM rentals r 
+         JOIN items i ON r.item_id = i.id 
+         JOIN users u ON r.renter_id = u.id
+         WHERE i.owner_id = $1 AND r.status IN ('approved', 'completed')
+         ORDER BY r.start_date DESC`, 
+         [userId]
       );
-      const rentals = result.rows.map(row => ({ ...row, total_earnings: row.price_per_day })); 
-      res.json({ total: 0, history: rentals });
+      
+      const rentals = result.rows.map(row => {
+         let earned = row.total_price_val;
+         // Fallback if total_price is missing (legacy records)
+         if (!earned) {
+            const days = Math.max(1, Math.ceil((new Date(row.end_date).getTime() - new Date(row.start_date).getTime()) / (1000 * 60 * 60 * 24)));
+            earned = row.price_per_day * days;
+         }
+         return { ...row, total_earnings: earned };
+      });
+      
+      const total = rentals.reduce((sum, r) => sum + r.total_earnings, 0);
+      res.json({ total, history: rentals });
     } catch (error) { res.status(500).json({ error: "Failed" }); }
   });
 
