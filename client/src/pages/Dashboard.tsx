@@ -24,7 +24,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-// --- NEW IMPORT ---
 import { ImageUpload } from "@/components/ImageUpload"; 
 
 
@@ -47,6 +46,14 @@ export default function Dashboard() {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
   const [earningsView, setEarningsView] = useState<'day' | 'month' | 'year' | 'all'>('month');
 
+  // --- HELPER: CALCULATE TRUE RENTAL COST ---
+  // Uses the negotiated totalPrice if available, otherwise calculates (Days * Rate)
+  const getRentalCost = (r: any) => {
+    if (r.totalPrice) return r.totalPrice; // Use the negotiated price (in cents)
+    const days = Math.max(1, Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / (1000 * 60 * 60 * 24)));
+    return r.item.pricePerDay * days;
+  };
+
   const earningsData = useMemo(() => {
     if (!rentals?.incoming) return [];
     
@@ -62,10 +69,7 @@ export default function Dashboard() {
       return last7Days.map(day => {
         const amount = completedRentals
           .filter(r => isSameDay(new Date(r.startDate), day))
-          .reduce((sum, r) => {
-            const days = Math.max(1, Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / (1000 * 60 * 60 * 24)));
-            return sum + (r.item.pricePerDay * days);
-          }, 0);
+          .reduce((sum, r) => sum + getRentalCost(r), 0);
         return { name: format(day, 'MMM d'), amount: amount / 100 };
       });
     }
@@ -80,10 +84,7 @@ export default function Dashboard() {
       return last6Months.map(month => {
         const amount = completedRentals
           .filter(r => isSameMonth(new Date(r.startDate), month))
-          .reduce((sum, r) => {
-            const days = Math.max(1, Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / (1000 * 60 * 60 * 24)));
-            return sum + (r.item.pricePerDay * days);
-          }, 0);
+          .reduce((sum, r) => sum + getRentalCost(r), 0);
         return { name: format(month, 'MMM'), amount: amount / 100 };
       });
     }
@@ -98,19 +99,13 @@ export default function Dashboard() {
       return last3Years.map(year => {
         const amount = completedRentals
           .filter(r => isSameYear(new Date(r.startDate), year))
-          .reduce((sum, r) => {
-            const days = Math.max(1, Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / (1000 * 60 * 60 * 24)));
-            return sum + (r.item.pricePerDay * days);
-          }, 0);
+          .reduce((sum, r) => sum + getRentalCost(r), 0);
         return { name: format(year, 'yyyy'), amount: amount / 100 };
       });
     }
 
     // All time
-    const total = completedRentals.reduce((sum, r) => {
-      const days = Math.max(1, Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / (1000 * 60 * 60 * 24)));
-      return sum + (r.item.pricePerDay * days);
-    }, 0);
+    const total = completedRentals.reduce((sum, r) => sum + getRentalCost(r), 0);
     return [{ name: 'Total Earnings', amount: total / 100 }];
   }, [rentals, earningsView]);
 
@@ -118,10 +113,7 @@ export default function Dashboard() {
     if (!rentals?.incoming) return 0;
     return rentals.incoming
       .filter(r => r.status === 'completed' || r.status === 'approved')
-      .reduce((sum, r) => {
-        const days = Math.max(1, Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / (1000 * 60 * 60 * 24)));
-        return sum + (r.item.pricePerDay * days);
-      }, 0);
+      .reduce((sum, r) => sum + getRentalCost(r), 0);
   }, [rentals]);
 
   const blockMutation = useMutation({
@@ -223,22 +215,25 @@ export default function Dashboard() {
     const [approvalPrice, setApprovalPrice] = useState<number>(0);
 
     const handleOpenApproval = (rental: any) => {
-        // Calculate the default total based on days * price
+        // 1. Check if there is already a negotiated totalPrice (converted from cents)
+        const negotiatedPrice = rental.totalPrice ? rental.totalPrice / 100 : 0;
+
+        // 2. Otherwise calculate default (Days * Rate)
         const days = Math.max(1, Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)));
-        const defaultTotal = (rental.item.pricePerDay * days) / 100; // Convert to dollars
+        const calculatedPrice = (rental.item.pricePerDay * days) / 100;
         
+        // 3. Set the price (prefer negotiated, fallback to calculated)
         setApprovingRental(rental);
-        setApprovalPrice(defaultTotal);
+        setApprovalPrice(negotiatedPrice > 0 ? negotiatedPrice : calculatedPrice);
     };
 
     const handleConfirmApproval = () => {
         if (!approvingRental) return;
 
-        // Send the updated price (converted back to cents)
         updateStatus.mutate({ 
             id: approvingRental.id, 
             status: 'approved',
-            totalPrice: Math.round(approvalPrice * 100) // Convert to cents for DB
+            totalPrice: Math.round(approvalPrice * 100) // Convert back to cents
         });
         
         setApprovingRental(null);
@@ -271,11 +266,11 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground block text-xs uppercase font-medium">Estimated Value</span>
+                    <span className="text-muted-foreground block text-xs uppercase font-medium">
+                        {rental.totalPrice ? "Agreed Price" : "Estimated Value"}
+                    </span>
                     <span className="font-medium text-primary">
-                      {formatCurrency(
-                        Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)) * rental.item.pricePerDay
-                      )}
+                      {formatCurrency(getRentalCost(rental))}
                     </span>
                   </div>
                 </div>
@@ -291,7 +286,6 @@ export default function Dashboard() {
                   Reject
                 </Button>
                 
-                {/* Opens the Approval Modal */}
                 <Button 
                   size="sm"
                   className="bg-green-600 hover:bg-green-700 text-white"
@@ -384,10 +378,11 @@ export default function Dashboard() {
                     <PayButton 
                         rentalId={rental.id}
                         title={rental.item.title}
-                        pricePerDay={rental.item.pricePerDay}
+                        pricePerDay={rental.item.pricePerDay} // Kept for reference but...
                         days={Math.max(1, Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)))}
                         imageUrl={rental.item.imageUrl}
                         ownerId={rental.item.ownerId}
+                        // If PayButton supports 'totalAmount', you should pass getRentalCost(rental) here!
                     />
                 </CardFooter>
               )}
@@ -838,7 +833,8 @@ export default function Dashboard() {
                               <p className="text-xs text-muted-foreground">{format(new Date(rental.startDate), "MMM d, yyyy")}</p>
                             </div>
                           </div>
-                          <p className="text-sm font-bold text-green-600">+{formatCurrency(rental.item.pricePerDay)}</p>
+                          {/* --- FIXED: Displays full deal value instead of daily rate --- */}
+                          <p className="text-sm font-bold text-green-600">+{formatCurrency(getRentalCost(rental))}</p>
                         </div>
                       ))}
                   </div>
