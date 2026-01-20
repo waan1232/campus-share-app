@@ -215,7 +215,7 @@ export default function Dashboard() {
     );
   };
 
- const IncomingRequests = () => {
+  const IncomingRequests = () => {
     const pendingRentals = rentals?.incoming.filter(r => r.status === 'pending') || [];
     
     // State for the Approval Modal
