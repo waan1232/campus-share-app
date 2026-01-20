@@ -6,14 +6,18 @@ import { useAuth } from "@/hooks/use-auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label"; // New Import
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { formatCurrency, cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { Calendar } from "@/components/ui/calendar"; // New Import
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"; // New Import
 import { 
   Loader2, Send, Search, MessageSquareOff, Trash2, Check, CheckCheck, 
-  ArrowLeft, X, CheckCircle2, CalendarDays, ExternalLink
+  ArrowLeft, X, CheckCircle2, CalendarDays, ExternalLink, DollarSign 
 } from "lucide-react";
+import { format } from "date-fns"; // New Import
 
 interface Message {
   id: number;
@@ -49,6 +53,11 @@ export default function InboxPage() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [newMessage, setNewMessage] = useState("");
 
+  // --- NEW: OFFER STATE ---
+  const [isOfferOpen, setIsOfferOpen] = useState(false);
+  const [offerPrice, setOfferPrice] = useState("");
+  const [offerDates, setOfferDates] = useState<{ from: Date; to: Date } | undefined>();
+
   const { data: rawMessages, isLoading } = useQuery<Message[]>({
     queryKey: ["/api/messages"],
     refetchInterval: 3000,
@@ -76,19 +85,53 @@ export default function InboxPage() {
       const text = variables.status === 'accepted' ? "Offer Accepted! Rental created." : "Offer Declined.";
       toast({ title: text });
       queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
+      // Also update rentals so it shows up in dashboard immediately
+      queryClient.invalidateQueries({ queryKey: ["/api/rentals"] });
     },
   });
 
+  // --- UPDATED SEND MESSAGE MUTATION (HANDLES TEXT OR OFFERS) ---
   const sendMessageMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedUserId || !newMessage.trim()) return;
-      await apiRequest("POST", "/api/messages", { receiverId: selectedUserId, content: newMessage });
+    mutationFn: async (data: any) => {
+      // If passing data directly (offer), use it. Otherwise use state (text message).
+      const payload = data || { receiverId: selectedUserId, content: newMessage };
+      await apiRequest("POST", "/api/messages", payload);
     },
     onSuccess: () => {
       setNewMessage("");
+      // Clear offer state
+      setOfferPrice("");
+      setOfferDates(undefined);
+      setIsOfferOpen(false); 
       queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
     },
   });
+
+  const handleSendOffer = () => {
+    if (!offerPrice || !selectedUserId || !offerDates?.from || !offerDates?.to) {
+        toast({ title: "Missing Info", description: "Please enter a price and select dates.", variant: "destructive" });
+        return;
+    }
+
+    // Try to find the item context from previous messages
+    const activeConv = conversations.find(c => c.userId === selectedUserId);
+    const lastItemMsg = activeConv?.messages.findLast((m: Message) => m.item_id);
+    const itemId = lastItemMsg?.item_id;
+
+    if (!itemId) {
+        toast({ title: "No Item Context", description: "We couldn't determine which item this offer is for. Please go to the item page and click 'Message Owner' first.", variant: "destructive" });
+        return;
+    }
+
+    sendMessageMutation.mutate({
+      receiverId: selectedUserId,
+      content: `I'd like to rent this for $${offerPrice} total.`,
+      itemId: itemId,
+      offerPrice: Math.round(parseFloat(offerPrice) * 100), // Convert to cents
+      startDate: offerDates.from,
+      endDate: offerDates.to
+    });
+  };
 
   useEffect(() => {
     if (selectedUserId) markReadMutation.mutate(selectedUserId);
@@ -178,22 +221,67 @@ export default function InboxPage() {
         <Card className={cn("flex-col h-full overflow-hidden border-border/60 shadow-sm", selectedUserId ? "flex" : "hidden md:flex")}>
           {activeConversation ? (
             <>
-              <div className="p-4 border-b bg-background flex items-center gap-3 shadow-sm z-10">
-                <Button variant="ghost" size="icon" className="md:hidden mr-1" onClick={() => setSelectedUserId(null)}><ArrowLeft className="h-5 w-5" /></Button>
-                <Avatar className="h-9 w-9 border"><AvatarFallback className="bg-primary/10 text-primary">{activeConversation.userName.charAt(0)}</AvatarFallback></Avatar>
-                <div><h3 className="font-bold text-sm">{activeConversation.userName}</h3><p className="text-xs text-green-600 font-medium">Online</p></div>
+              <div className="p-4 border-b bg-background flex items-center justify-between shadow-sm z-10">
+                <div className="flex items-center gap-3">
+                    <Button variant="ghost" size="icon" className="md:hidden mr-1" onClick={() => setSelectedUserId(null)}><ArrowLeft className="h-5 w-5" /></Button>
+                    <Avatar className="h-9 w-9 border"><AvatarFallback className="bg-primary/10 text-primary">{activeConversation.userName.charAt(0)}</AvatarFallback></Avatar>
+                    <div><h3 className="font-bold text-sm">{activeConversation.userName}</h3><p className="text-xs text-green-600 font-medium">Online</p></div>
+                </div>
+
+                {/* --- NEW: MAKE OFFER BUTTON --- */}
+                <Dialog open={isOfferOpen} onOpenChange={setIsOfferOpen}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" variant="outline" className="gap-2">
+                        <DollarSign className="h-4 w-4" /> Make Offer
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Make a Rental Offer</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Total Price ($)</Label>
+                            <Input 
+                                type="number" 
+                                placeholder="50.00" 
+                                value={offerPrice}
+                                onChange={(e) => setOfferPrice(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Rental Dates</Label>
+                            <div className="border rounded-md p-2 flex justify-center">
+                                <Calendar
+                                    mode="range"
+                                    selected={offerDates}
+                                    onSelect={setOfferDates}
+                                    numberOfMonths={1}
+                                    defaultMonth={new Date()}
+                                    disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                                />
+                            </div>
+                        </div>
+                        <Button className="w-full" onClick={handleSendOffer} disabled={sendMessageMutation.isPending}>
+                            {sendMessageMutation.isPending ? "Sending..." : "Send Offer"}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                  {/* ----------------------------- */}
               </div>
               
               <ScrollArea className="flex-1 p-4 bg-slate-50/50">
                 <div className="flex flex-col gap-6">
                   {activeConversation.messages.map((msg) => {
                     const isMe = msg.sender_id === user?.id;
+                    const isOffer = msg.offer_price && msg.offer_price > 0;
                     
                     // Logic to calculate days and total
                     const days = msg.start_date && msg.end_date 
                       ? Math.ceil((new Date(msg.end_date).getTime() - new Date(msg.start_date).getTime()) / (1000 * 60 * 60 * 24)) 
                       : 0;
-                    const totalCost = (msg.offer_price || 0) * days;
+                    const totalCost = (msg.offer_price || 0) * days; // Logic adjusted: offer_price IS the total in DB, no need to multiply if stored as total
 
                     return (
                       <div key={msg.id} className={cn("flex w-full flex-col gap-1", isMe ? "items-end" : "items-start")}>
@@ -227,24 +315,18 @@ export default function InboxPage() {
                             {msg.offer_price ? (
                               <div className="p-3 space-y-3">
                                 <div className="flex justify-between items-baseline">
-                                  <span className="text-xs text-muted-foreground">Offer Price</span>
-                                  <span className="font-semibold text-sm">{formatCurrency(msg.offer_price)}<span className="text-xs font-normal text-muted-foreground">/day</span></span>
+                                  <span className="text-xs text-muted-foreground">Proposed Deal</span>
+                                  <span className="font-semibold text-sm">{formatCurrency(msg.offer_price)}<span className="text-xs font-normal text-muted-foreground"> Total</span></span>
                                 </div>
                                 
                                 {days > 0 && (
-                                  <>
-                                    <div className="flex items-start gap-2 text-xs text-muted-foreground bg-slate-50 p-2 rounded">
-                                      <CalendarDays className="h-4 w-4 mt-0.5" />
-                                      <div>
-                                        <p>{new Date(msg.start_date!).toLocaleDateString()} - {new Date(msg.end_date!).toLocaleDateString()}</p>
-                                        <p className="font-medium text-black">{days} Days Total</p>
-                                      </div>
+                                  <div className="flex items-start gap-2 text-xs text-muted-foreground bg-slate-50 p-2 rounded">
+                                    <CalendarDays className="h-4 w-4 mt-0.5" />
+                                    <div>
+                                      <p>{new Date(msg.start_date!).toLocaleDateString()} - {new Date(msg.end_date!).toLocaleDateString()}</p>
+                                      <p className="font-medium text-black">{days} Days</p>
                                     </div>
-                                    <div className="flex justify-between items-center pt-2 border-t">
-                                      <span className="font-bold text-sm">Total Payout</span>
-                                      <span className="font-bold text-lg text-primary">{formatCurrency(totalCost)}</span>
-                                    </div>
-                                  </>
+                                  </div>
                                 )}
 
                                 {/* Status Bar */}
@@ -273,7 +355,7 @@ export default function InboxPage() {
                                 </div>
                               </div>
                             ) : (
-                                <div className="p-2 text-center text-xs text-muted-foreground italic bg-slate-50">Mentioned this item</div>
+                              <div className="p-2 text-center text-xs text-muted-foreground italic bg-slate-50">Mentioned this item</div>
                             )}
                           </div>
                         )}
@@ -297,7 +379,7 @@ export default function InboxPage() {
               </ScrollArea>
 
               <div className="p-4 bg-background border-t">
-                <form onSubmit={(e) => { e.preventDefault(); sendMessageMutation.mutate(); }} className="flex gap-2">
+                <form onSubmit={(e) => { e.preventDefault(); sendMessageMutation.mutate(null); }} className="flex gap-2">
                   <Input placeholder="Type a message..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} className="flex-1 rounded-full bg-muted/30 border-muted-foreground/20" />
                   <Button type="submit" size="icon" className="rounded-full h-10 w-10 shrink-0 shadow-sm" disabled={!newMessage.trim() || sendMessageMutation.isPending}><Send className="h-4 w-4" /></Button>
                 </form>
