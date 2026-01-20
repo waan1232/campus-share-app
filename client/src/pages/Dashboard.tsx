@@ -215,8 +215,34 @@ export default function Dashboard() {
     );
   };
 
-  const IncomingRequests = () => {
+ const IncomingRequests = () => {
     const pendingRentals = rentals?.incoming.filter(r => r.status === 'pending') || [];
+    
+    // State for the Approval Modal
+    const [approvingRental, setApprovingRental] = useState<any>(null);
+    const [approvalPrice, setApprovalPrice] = useState<number>(0);
+
+    const handleOpenApproval = (rental: any) => {
+        // Calculate the default total based on days * price
+        const days = Math.max(1, Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)));
+        const defaultTotal = (rental.item.pricePerDay * days) / 100; // Convert to dollars
+        
+        setApprovingRental(rental);
+        setApprovalPrice(defaultTotal);
+    };
+
+    const handleConfirmApproval = () => {
+        if (!approvingRental) return;
+
+        // Send the updated price (converted back to cents)
+        updateStatus.mutate({ 
+            id: approvingRental.id, 
+            status: 'approved',
+            totalPrice: Math.round(approvalPrice * 100) // Convert to cents for DB
+        });
+        
+        setApprovingRental(null);
+    };
     
     return (
       <div className="space-y-4">
@@ -245,9 +271,8 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground block text-xs uppercase font-medium">Total Value</span>
+                    <span className="text-muted-foreground block text-xs uppercase font-medium">Estimated Value</span>
                     <span className="font-medium text-primary">
-                      {/* Calculate based on days * price */}
                       {formatCurrency(
                         Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)) * rental.item.pricePerDay
                       )}
@@ -265,11 +290,12 @@ export default function Dashboard() {
                 >
                   Reject
                 </Button>
+                
+                {/* Opens the Approval Modal */}
                 <Button 
                   size="sm"
                   className="bg-green-600 hover:bg-green-700 text-white"
-                  onClick={() => updateStatus.mutate({ id: rental.id, status: 'approved' })}
-                  disabled={updateStatus.isPending}
+                  onClick={() => handleOpenApproval(rental)}
                 >
                   Approve Request
                 </Button>
@@ -277,6 +303,39 @@ export default function Dashboard() {
             </Card>
           ))
         )}
+
+        {/* --- APPROVAL CONFIRMATION DIALOG --- */}
+        <Dialog open={!!approvingRental} onOpenChange={(open) => !open && setApprovingRental(null)}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Confirm Booking</DialogTitle>
+                    <CardDescription>You can adjust the final price before accepting.</CardDescription>
+                </DialogHeader>
+                
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <Label>Agreed Total Price ($)</Label>
+                        <Input 
+                            type="number" 
+                            step="0.01"
+                            value={approvalPrice} 
+                            onChange={(e) => setApprovalPrice(parseFloat(e.target.value))} 
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            This is the amount the renter will be charged.
+                        </p>
+                    </div>
+                    
+                    <Button 
+                        className="w-full bg-green-600 hover:bg-green-700" 
+                        onClick={handleConfirmApproval}
+                        disabled={updateStatus.isPending}
+                    >
+                        {updateStatus.isPending ? "Approving..." : "Confirm & Accept"}
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
       </div>
     );
   };
