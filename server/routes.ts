@@ -624,12 +624,13 @@ export async function registerRoutes(
     }
   });
 
-  // 2. Accept Offer (Creates Rental if Missing)
+  // 2. Accept Offer (Updates Dates AND Price)
   app.patch("/api/messages/:id/offer", async (req, res) => {
     const { offer_status } = req.body;
     const messageId = parseInt(req.params.id);
 
     try {
+      // Get the message details
       const result = await pool.query(
         `UPDATE messages SET offer_status = $1 WHERE id = $2 RETURNING *`,
         [offer_status, messageId]
@@ -640,18 +641,23 @@ export async function registerRoutes(
         // Try to find pending rental first
         const updateResult = await pool.query(
             `UPDATE rentals 
-             SET status = 'approved', total_price = $1 
+             SET status = 'approved', 
+                 total_price = $1,
+                 start_date = $4,  -- <--- CRITICAL: Update the dates too!
+                 end_date = $5     -- <--- CRITICAL: Update the dates too!
              WHERE item_id = $2 
                AND renter_id = $3 
                AND status = 'pending'`,
             [
                 message.offer_price,
                 message.item_id,
-                message.sender_id
+                message.sender_id,
+                message.start_date, // Use dates from the offer message
+                message.end_date
             ]
         );
 
-        // If no rental found (user negotiated via chat without requesting first), create it now.
+        // If no rental found (negotiated via chat without prior request), create it now.
         if (updateResult.rowCount === 0 && message.start_date && message.end_date) {
             await pool.query(
                 `INSERT INTO rentals (item_id, renter_id, start_date, end_date, total_price, status)
