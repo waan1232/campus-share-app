@@ -591,6 +591,7 @@ export async function registerRoutes(
 
   // --- MESSAGING SYSTEM ROUTES ---
   // Update message offer status AND Auto-Approve Rental
+  // Update message offer status AND Auto-Approve Rental
   app.patch("/api/messages/:id/offer", async (req, res) => {
     const { offer_status } = req.body;
     const messageId = parseInt(req.params.id);
@@ -603,22 +604,20 @@ export async function registerRoutes(
       );
       const message = result.rows[0];
 
-      // 2. IF ACCEPTED: Automatically approve the rental with the new price
+      // 2. IF ACCEPTED: Automatically approve the pending rental for this item/renter
       if (offer_status === 'accepted') {
+        // We find the 'pending' rental for this item and renter.
+        // We do NOT check start_date/end_date strictly to avoid timezone mismatches.
         await pool.query(
             `UPDATE rentals 
              SET status = 'approved', total_price = $1 
              WHERE item_id = $2 
                AND renter_id = $3 
-               AND start_date = $4 
-               AND end_date = $5 
                AND status = 'pending'`,
             [
                 message.offer_price, // Use the negotiated price
                 message.item_id,
-                message.sender_id,   // The person who sent the offer is the renter
-                message.start_date,
-                message.end_date
+                message.sender_id    // The sender of the offer is the renter
             ]
         );
       }
@@ -627,33 +626,6 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Error auto-accepting rental:", error);
       res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Accept Offer
-  app.patch("/api/messages/:id/offer", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
-    const msgId = Number(req.params.id);
-    const { status } = req.body; 
-
-    try {
-      const msgResult = await pool.query(
-        `UPDATE messages SET offer_status = $1 WHERE id = $2 RETURNING *`,
-        [status, msgId]
-      );
-      const message = msgResult.rows[0];
-
-      if (status === 'accepted' && message.item_id && message.start_date && message.end_date) {
-        await storage.createRental({
-            itemId: message.item_id,
-            renterId: message.sender_id, 
-            startDate: new Date(message.start_date),
-            endDate: new Date(message.end_date)
-        });
-      }
-      res.json(message);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update offer" });
     }
   });
 
