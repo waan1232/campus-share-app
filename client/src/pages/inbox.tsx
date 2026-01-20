@@ -17,7 +17,7 @@ import {
   Loader2, Send, Search, MessageSquareOff, Trash2, Check, CheckCheck, 
   ArrowLeft, X, CheckCircle2, CalendarDays, ExternalLink, DollarSign 
 } from "lucide-react";
-import { format } from "date-fns"; 
+import { format, differenceInCalendarDays } from "date-fns"; 
 
 interface Message {
   id: number;
@@ -55,8 +55,20 @@ export default function InboxPage() {
 
   // --- OFFER STATE ---
   const [isOfferOpen, setIsOfferOpen] = useState(false);
-  const [offerPrice, setOfferPrice] = useState("");
+  const [dailyRate, setDailyRate] = useState(""); 
   const [offerDates, setOfferDates] = useState<{ from: Date; to: Date } | undefined>();
+
+  // --- HELPER: CALCULATE DAYS & TOTAL ---
+  const offerSummary = useMemo(() => {
+    if (!dailyRate || !offerDates?.from || !offerDates?.to) return null;
+    
+    // Accurately calculate days between two dates
+    const days = Math.max(1, differenceInCalendarDays(offerDates.to, offerDates.from) + 1);
+    const rate = parseFloat(dailyRate);
+    const total = isNaN(rate) ? 0 : rate * days;
+
+    return { days, total, rate };
+  }, [dailyRate, offerDates]);
 
   const { data: rawMessages, isLoading } = useQuery<Message[]>({
     queryKey: ["/api/messages"],
@@ -77,17 +89,14 @@ export default function InboxPage() {
     },
   });
 
-  // --- FIXED MUTATION HERE ---
   const updateOfferMutation = useMutation({
     mutationFn: async ({ msgId, status }: { msgId: number, status: 'accepted' | 'rejected' }) => {
-      // FIX: Changed { status } to { offer_status: status }
       await apiRequest("PATCH", `/api/messages/${msgId}/offer`, { offer_status: status });
     },
     onSuccess: (_, variables) => {
       const text = variables.status === 'accepted' ? "Offer Accepted! Rental created." : "Offer Declined.";
       toast({ title: text });
       queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
-      // Also update rentals so it shows up in dashboard immediately
       queryClient.invalidateQueries({ queryKey: ["/api/rentals"] });
     },
   });
@@ -99,7 +108,7 @@ export default function InboxPage() {
     },
     onSuccess: () => {
       setNewMessage("");
-      setOfferPrice("");
+      setDailyRate("");
       setOfferDates(undefined);
       setIsOfferOpen(false); 
       queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
@@ -107,7 +116,7 @@ export default function InboxPage() {
   });
 
   const handleSendOffer = () => {
-    if (!offerPrice || !selectedUserId || !offerDates?.from || !offerDates?.to) {
+    if (!offerSummary || !selectedUserId || !offerDates?.from || !offerDates?.to) {
         toast({ title: "Missing Info", description: "Please enter a price and select dates.", variant: "destructive" });
         return;
     }
@@ -123,9 +132,9 @@ export default function InboxPage() {
 
     sendMessageMutation.mutate({
       receiverId: selectedUserId,
-      content: `I'd like to rent this for $${offerPrice} total.`,
+      content: `I'd like to rent this for $${offerSummary.rate}/day (${offerSummary.days} days).`,
       itemId: itemId,
-      offerPrice: Math.round(parseFloat(offerPrice) * 100), // Convert to cents
+      offerPrice: Math.round(offerSummary.total * 100), // Send TOTAL CENTS to DB
       startDate: offerDates.from,
       endDate: offerDates.to
     });
@@ -226,7 +235,7 @@ export default function InboxPage() {
                     <div><h3 className="font-bold text-sm">{activeConversation.userName}</h3><p className="text-xs text-green-600 font-medium">Online</p></div>
                 </div>
 
-                {/* --- NEW: MAKE OFFER BUTTON --- */}
+                {/* --- OFFER MODAL --- */}
                 <Dialog open={isOfferOpen} onOpenChange={setIsOfferOpen}>
                     <DialogTrigger asChild>
                       <Button size="sm" variant="outline" className="gap-2">
@@ -239,12 +248,12 @@ export default function InboxPage() {
                       </DialogHeader>
                       <div className="space-y-4 py-4">
                         <div className="space-y-2">
-                            <Label>Total Price ($)</Label>
+                            <Label>Offer Rate ($ per day)</Label>
                             <Input 
                                 type="number" 
-                                placeholder="50.00" 
-                                value={offerPrice}
-                                onChange={(e) => setOfferPrice(e.target.value)}
+                                placeholder="1.00" 
+                                value={dailyRate}
+                                onChange={(e) => setDailyRate(e.target.value)}
                             />
                         </div>
                         <div className="space-y-2">
@@ -260,7 +269,26 @@ export default function InboxPage() {
                                 />
                             </div>
                         </div>
-                        <Button className="w-full" onClick={handleSendOffer} disabled={sendMessageMutation.isPending}>
+                        
+                        {/* --- CALCULATION PREVIEW --- */}
+                        {offerSummary && (
+                            <div className="bg-slate-50 p-4 rounded-lg text-sm border">
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-muted-foreground">Duration:</span>
+                                    <span className="font-medium">{offerSummary.days} Days</span>
+                                </div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-muted-foreground">Rate:</span>
+                                    <span className="font-medium">{formatCurrency(offerSummary.rate * 100)}/day</span>
+                                </div>
+                                <div className="flex justify-between items-center pt-2 border-t font-bold text-base">
+                                    <span>Total Offer:</span>
+                                    <span className="text-primary">{formatCurrency(Math.round(offerSummary.total * 100))}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        <Button className="w-full" onClick={handleSendOffer} disabled={sendMessageMutation.isPending || !offerSummary}>
                             {sendMessageMutation.isPending ? "Sending..." : "Send Offer"}
                         </Button>
                       </div>
@@ -273,13 +301,14 @@ export default function InboxPage() {
                 <div className="flex flex-col gap-6">
                   {activeConversation.messages.map((msg) => {
                     const isMe = msg.sender_id === user?.id;
-                    const isOffer = msg.offer_price && msg.offer_price > 0;
                     
-                    // Logic to calculate days and total
-                    const days = msg.start_date && msg.end_date 
-                      ? Math.ceil((new Date(msg.end_date).getTime() - new Date(msg.start_date).getTime()) / (1000 * 60 * 60 * 24)) 
-                      : 0;
-                    const totalCost = (msg.offer_price || 0) * days; 
+                    // --- DATES & PRICE CALCULATION FIX ---
+                    let days = 0;
+                    if (msg.start_date && msg.end_date) {
+                        days = Math.max(1, differenceInCalendarDays(new Date(msg.end_date), new Date(msg.start_date)) + 1);
+                    }
+                    const totalCost = msg.offer_price || 0; // Stored as total cents
+                    // -------------------------------------
 
                     return (
                       <div key={msg.id} className={cn("flex w-full flex-col gap-1", isMe ? "items-end" : "items-start")}>
