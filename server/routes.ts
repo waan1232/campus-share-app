@@ -547,58 +547,44 @@ export async function registerRoutes(
 
   // Update rental status (with optional price override)
  // Update rental status (with optional price override) AND Notify Renter
-  app.patch("/api/rentals/:id/status", async (req, res) => {
-    const { status, totalPrice } = req.body;
-    const rentalId = parseInt(req.params.id);
-
+ // Get all rentals for the user (as owner or renter)
+  app.get("/api/rentals", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
     try {
-      // 1. Get Rental Details first (so we know who to message)
-      const rentalResult = await pool.query(
-        `SELECT r.*, i.title, i.owner_id 
-         FROM rentals r 
-         JOIN items i ON r.item_id = i.id 
-         WHERE r.id = $1`,
-        [rentalId]
+      // 1. Outgoing (Items I am renting from others)
+      const outgoing = await pool.query(
+        `SELECT r.id, r.item_id as "itemId", r.renter_id as "renterId", 
+                r.start_date as "startDate", r.end_date as "endDate", 
+                r.status, r.created_at as "createdAt", 
+                r.total_price as "totalPrice",  -- <--- CRITICAL ADDITION
+                row_to_json(i.*) as item
+         FROM rentals r
+         JOIN items i ON r.item_id = i.id
+         WHERE r.renter_id = $1
+         ORDER BY r.created_at DESC`,
+        [req.user!.id]
       );
-      const rental = rentalResult.rows[0];
 
-      if (!rental) return res.status(404).json({ error: "Rental not found" });
+      // 2. Incoming (Items others are renting from me)
+      const incoming = await pool.query(
+        `SELECT r.id, r.item_id as "itemId", r.renter_id as "renterId", 
+                r.start_date as "startDate", r.end_date as "endDate", 
+                r.status, r.created_at as "createdAt", 
+                r.total_price as "totalPrice", -- <--- CRITICAL ADDITION
+                row_to_json(i.*) as item,
+                json_build_object('id', u.id, 'username', u.username, 'name', u.name, 'email', u.email) as renter
+         FROM rentals r
+         JOIN items i ON r.item_id = i.id
+         JOIN users u ON r.renter_id = u.id
+         WHERE i.owner_id = $1
+         ORDER BY r.created_at DESC`,
+        [req.user!.id]
+      );
 
-      // 2. Update Rental Status (and Price if provided)
-      if (totalPrice !== undefined && !isNaN(totalPrice)) {
-        await pool.query(
-          `UPDATE rentals SET status = $1, total_price = $2 WHERE id = $3`,
-          [status, totalPrice, rentalId]
-        );
-      } else {
-        await pool.query(
-          `UPDATE rentals SET status = $1 WHERE id = $2`,
-          [status, rentalId]
-        );
-      }
-
-      // 3. Send Notification Message to the Renter
-      let messageContent = "";
-      if (status === "approved") {
-        messageContent = `Great news! Your request for "${rental.title}" has been approved. You can now proceed to payment in your Dashboard.`;
-      } else if (status === "rejected") {
-        messageContent = `Update: Your request for "${rental.title}" was declined by the owner.`;
-      } else if (status === "completed") {
-        messageContent = `The rental for "${rental.title}" has been marked as returned. Thanks for using CampusShare!`;
-      }
-
-      // Only send a message if we defined one above
-      if (messageContent) {
-        await pool.query(
-          `INSERT INTO messages (sender_id, receiver_id, content, item_id, sent_at, read)
-           VALUES ($1, $2, $3, $4, NOW(), false)`,
-          [rental.owner_id, rental.renter_id, messageContent, rental.item_id]
-        );
-      }
-
-      res.json({ message: "Rental status updated and notification sent" });
+      res.json({ outgoing: outgoing.rows, incoming: incoming.rows });
     } catch (error: any) {
-      console.error("Error updating rental:", error);
+      console.error("Error fetching rentals:", error);
       res.status(500).json({ error: error.message });
     }
   });
