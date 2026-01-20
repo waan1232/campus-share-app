@@ -546,13 +546,25 @@ export async function registerRoutes(
   });
 
   // Update rental status (with optional price override)
+ // Update rental status (with optional price override) AND Notify Renter
   app.patch("/api/rentals/:id/status", async (req, res) => {
-    const { status, totalPrice } = req.body; // <--- Get totalPrice from body
+    const { status, totalPrice } = req.body;
     const rentalId = parseInt(req.params.id);
 
     try {
-      // If a custom price is provided (and valid), update the price AND the status.
-      // Otherwise, just update the status.
+      // 1. Get Rental Details first (so we know who to message)
+      const rentalResult = await pool.query(
+        `SELECT r.*, i.title, i.owner_id 
+         FROM rentals r 
+         JOIN items i ON r.item_id = i.id 
+         WHERE r.id = $1`,
+        [rentalId]
+      );
+      const rental = rentalResult.rows[0];
+
+      if (!rental) return res.status(404).json({ error: "Rental not found" });
+
+      // 2. Update Rental Status (and Price if provided)
       if (totalPrice !== undefined && !isNaN(totalPrice)) {
         await pool.query(
           `UPDATE rentals SET status = $1, total_price = $2 WHERE id = $3`,
@@ -565,8 +577,28 @@ export async function registerRoutes(
         );
       }
 
-      res.json({ message: "Rental status updated" });
+      // 3. Send Notification Message to the Renter
+      let messageContent = "";
+      if (status === "approved") {
+        messageContent = `Great news! Your request for "${rental.title}" has been approved. You can now proceed to payment in your Dashboard.`;
+      } else if (status === "rejected") {
+        messageContent = `Update: Your request for "${rental.title}" was declined by the owner.`;
+      } else if (status === "completed") {
+        messageContent = `The rental for "${rental.title}" has been marked as returned. Thanks for using CampusShare!`;
+      }
+
+      // Only send a message if we defined one above
+      if (messageContent) {
+        await pool.query(
+          `INSERT INTO messages (sender_id, receiver_id, content, item_id, sent_at, read)
+           VALUES ($1, $2, $3, $4, NOW(), false)`,
+          [rental.owner_id, rental.renter_id, messageContent, rental.item_id]
+        );
+      }
+
+      res.json({ message: "Rental status updated and notification sent" });
     } catch (error: any) {
+      console.error("Error updating rental:", error);
       res.status(500).json({ error: error.message });
     }
   });
