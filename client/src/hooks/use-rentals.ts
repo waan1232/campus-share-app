@@ -51,35 +51,16 @@ export function useCreateRental() {
 
 export function useUpdateRentalStatus() {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: "approved" | "rejected" | "completed" }) => {
-      const url = buildUrl(api.rentals.updateStatus.path, { id });
-      const res = await fetch(url, {
-        method: api.rentals.updateStatus.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to update status");
-      }
-      return api.rentals.updateStatus.responses[200].parse(await res.json());
+    // Update the type to include totalPrice (optional)
+    mutationFn: async ({ id, status, totalPrice }: { id: number; status: string; totalPrice?: number }) => {
+      // Send totalPrice in the body
+      const res = await apiRequest("PATCH", `/api/rentals/${id}/status`, { status, totalPrice });
+      return res.json();
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: [api.rentals.list.path] });
-      toast({
-        title: `Rental ${variables.status}`,
-        description: `Successfully marked rental as ${variables.status}.`,
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Update failed",
-        description: error.message,
-        variant: "destructive",
-      });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/rentals"] });
     },
   });
 }
