@@ -6,18 +6,18 @@ import { useAuth } from "@/hooks/use-auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label"; // New Import
+import { Label } from "@/components/ui/label"; 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { formatCurrency, cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar } from "@/components/ui/calendar"; // New Import
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"; // New Import
+import { Calendar } from "@/components/ui/calendar"; 
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"; 
 import { 
   Loader2, Send, Search, MessageSquareOff, Trash2, Check, CheckCheck, 
   ArrowLeft, X, CheckCircle2, CalendarDays, ExternalLink, DollarSign 
 } from "lucide-react";
-import { format } from "date-fns"; // New Import
+import { format } from "date-fns"; 
 
 interface Message {
   id: number;
@@ -53,7 +53,7 @@ export default function InboxPage() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [newMessage, setNewMessage] = useState("");
 
-  // --- NEW: OFFER STATE ---
+  // --- OFFER STATE ---
   const [isOfferOpen, setIsOfferOpen] = useState(false);
   const [offerPrice, setOfferPrice] = useState("");
   const [offerDates, setOfferDates] = useState<{ from: Date; to: Date } | undefined>();
@@ -77,9 +77,11 @@ export default function InboxPage() {
     },
   });
 
+  // --- FIXED MUTATION HERE ---
   const updateOfferMutation = useMutation({
     mutationFn: async ({ msgId, status }: { msgId: number, status: 'accepted' | 'rejected' }) => {
-      await apiRequest("PATCH", `/api/messages/${msgId}/offer`, { status });
+      // FIX: Changed { status } to { offer_status: status }
+      await apiRequest("PATCH", `/api/messages/${msgId}/offer`, { offer_status: status });
     },
     onSuccess: (_, variables) => {
       const text = variables.status === 'accepted' ? "Offer Accepted! Rental created." : "Offer Declined.";
@@ -90,16 +92,13 @@ export default function InboxPage() {
     },
   });
 
-  // --- UPDATED SEND MESSAGE MUTATION (HANDLES TEXT OR OFFERS) ---
   const sendMessageMutation = useMutation({
     mutationFn: async (data: any) => {
-      // If passing data directly (offer), use it. Otherwise use state (text message).
       const payload = data || { receiverId: selectedUserId, content: newMessage };
       await apiRequest("POST", "/api/messages", payload);
     },
     onSuccess: () => {
       setNewMessage("");
-      // Clear offer state
       setOfferPrice("");
       setOfferDates(undefined);
       setIsOfferOpen(false); 
@@ -113,7 +112,6 @@ export default function InboxPage() {
         return;
     }
 
-    // Try to find the item context from previous messages
     const activeConv = conversations.find(c => c.userId === selectedUserId);
     const lastItemMsg = activeConv?.messages.findLast((m: Message) => m.item_id);
     const itemId = lastItemMsg?.item_id;
@@ -281,18 +279,16 @@ export default function InboxPage() {
                     const days = msg.start_date && msg.end_date 
                       ? Math.ceil((new Date(msg.end_date).getTime() - new Date(msg.start_date).getTime()) / (1000 * 60 * 60 * 24)) 
                       : 0;
-                    const totalCost = (msg.offer_price || 0) * days; // Logic adjusted: offer_price IS the total in DB, no need to multiply if stored as total
+                    const totalCost = (msg.offer_price || 0) * days; 
 
                     return (
                       <div key={msg.id} className={cn("flex w-full flex-col gap-1", isMe ? "items-end" : "items-start")}>
                         
-                        {/* --- THE OFFER CARD (Fixed Styling) --- */}
                         {(msg.item_id || msg.offer_price) && (
                           <div className={cn(
                             "mb-1 w-[280px] rounded-xl overflow-hidden shadow-sm border",
-                            "bg-white" // Always white background for the card for cleanliness
+                            "bg-white" 
                           )}>
-                            {/* Header / Title Link */}
                             {msg.item_id && (
                               <Link href={`/items/${msg.item_id}`}>
                                 <div className="flex items-center gap-3 p-3 border-b bg-gray-50/50 cursor-pointer hover:bg-gray-100 transition-colors">
@@ -311,7 +307,6 @@ export default function InboxPage() {
                               </Link>
                             )}
 
-                            {/* Offer Details Body */}
                             {msg.offer_price ? (
                               <div className="p-3 space-y-3">
                                 <div className="flex justify-between items-baseline">
@@ -329,7 +324,6 @@ export default function InboxPage() {
                                   </div>
                                 )}
 
-                                {/* Status Bar */}
                                 <div className="pt-2">
                                   {msg.offer_status === 'accepted' && (
                                     <div className="w-full py-2 bg-green-100 text-green-700 rounded text-center text-xs font-bold flex items-center justify-center gap-2">
@@ -360,7 +354,6 @@ export default function InboxPage() {
                           </div>
                         )}
 
-                        {/* --- THE TEXT MESSAGE BUBBLE --- */}
                         <div className={cn(
                           "px-4 py-2 text-sm shadow-sm max-w-[85%]",
                           isMe ? "bg-primary text-primary-foreground rounded-2xl rounded-tr-sm" : "bg-white border border-border/50 rounded-2xl rounded-tl-sm"
