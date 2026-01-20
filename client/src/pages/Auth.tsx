@@ -13,7 +13,6 @@ import { TermsModal } from "@/components/TermsModal";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { GraduationCap, Loader2 } from "lucide-react";
-// --- NEW IMPORTS FOR MODALS ---
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -398,7 +397,7 @@ function RegisterForm({ onSubmit, isLoading }: { onSubmit: (data: any) => void, 
           />
         </div>
 
-        {/* TERMS OF SERVICE CHECKBOX */}
+        {/* --- UPDATED TERMS CHECKBOX --- */}
         <div className="flex items-start space-x-2 py-2">
           <Checkbox 
             id="terms" 
@@ -409,7 +408,7 @@ function RegisterForm({ onSubmit, isLoading }: { onSubmit: (data: any) => void, 
             <Label htmlFor="terms" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
               I agree to the{" "}
               <span className="text-primary hover:underline cursor-pointer" onClick={() => setShowTerms(true)}>
-                Terms & Conditions
+                Terms of Service & Liability Waiver
               </span>
             </Label>
             <p className="text-xs text-muted-foreground">
