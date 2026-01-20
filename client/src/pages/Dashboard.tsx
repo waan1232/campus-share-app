@@ -47,13 +47,21 @@ export default function Dashboard() {
 
   // --- HELPER: CALCULATE TRUE RENTAL COST ---
   // Returns value in CENTS
+  // --- HELPER: CALCULATE TRUE RENTAL COST (CENTS) ---
   const getRentalCostCents = (r: any) => {
-    // 1. If we have a negotiated total price, use it directly.
-    if (r.totalPrice !== undefined && r.totalPrice !== null) {
-        return r.totalPrice;
+    // Check for negotiated price in both formats
+    const price = r.totalPrice ?? r.total_price;
+    
+    // If a negotiated price exists, use it
+    if (price !== undefined && price !== null) {
+        return price;
     }
-    // 2. Fallback to Days * Rate calculation
-    const days = Math.max(1, Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / (1000 * 60 * 60 * 24)));
+    
+    // Fallback: Calculate based on daily rate * days
+    const start = new Date(r.startDate).getTime();
+    const end = new Date(r.endDate).getTime();
+    const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+    
     return r.item.pricePerDay * days;
   };
 
