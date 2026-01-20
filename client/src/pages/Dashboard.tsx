@@ -47,9 +47,13 @@ export default function Dashboard() {
   const [earningsView, setEarningsView] = useState<'day' | 'month' | 'year' | 'all'>('month');
 
   // --- HELPER: CALCULATE TRUE RENTAL COST ---
-  // Uses the negotiated totalPrice if available, otherwise calculates (Days * Rate)
+  // Returns value in CENTS
   const getRentalCost = (r: any) => {
-    if (r.totalPrice) return r.totalPrice; // Use the negotiated price (in cents)
+    // 1. If we have a negotiated total price, use it directly.
+    if (r.totalPrice !== undefined && r.totalPrice !== null) {
+        return r.totalPrice;
+    }
+    // 2. Fallback to Days * Rate calculation
     const days = Math.max(1, Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / (1000 * 60 * 60 * 24)));
     return r.item.pricePerDay * days;
   };
@@ -215,16 +219,11 @@ export default function Dashboard() {
     const [approvalPrice, setApprovalPrice] = useState<number>(0);
 
     const handleOpenApproval = (rental: any) => {
-        // 1. Check if there is already a negotiated totalPrice (converted from cents)
-        const negotiatedPrice = rental.totalPrice ? rental.totalPrice / 100 : 0;
-
-        // 2. Otherwise calculate default (Days * Rate)
-        const days = Math.max(1, Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)));
-        const calculatedPrice = (rental.item.pricePerDay * days) / 100;
+        // Calculate costs using helper
+        const totalCents = getRentalCost(rental);
         
-        // 3. Set the price (prefer negotiated, fallback to calculated)
         setApprovingRental(rental);
-        setApprovalPrice(negotiatedPrice > 0 ? negotiatedPrice : calculatedPrice);
+        setApprovalPrice(totalCents / 100); // Display as dollars
     };
 
     const handleConfirmApproval = () => {
@@ -347,47 +346,55 @@ export default function Dashboard() {
             </Link>
           </div>
         ) : (
-          myRentals.map(rental => (
-            <Card key={rental.id} className="overflow-hidden flex flex-col justify-between">
-              <div>
-                <div className="h-32 w-full overflow-hidden relative">
-                    <img 
-                    src={rental.item.imageUrl} 
-                    alt={rental.item.title} 
-                    className="w-full h-full object-cover"
-                    />
-                    <div className="absolute top-2 right-2">
-                    <StatusBadge status={rental.status} />
-                    </div>
-                </div>
-                <CardHeader className="p-4 pb-2">
-                    <CardTitle className="text-base line-clamp-1">{rental.item.title}</CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0 text-sm">
-                    <div className="flex justify-between items-center mt-2">
-                    <span className="text-muted-foreground">
-                        {format(new Date(rental.startDate), "MMM d")} - {format(new Date(rental.endDate), "MMM d")}
-                    </span>
-                    </div>
-                </CardContent>
-              </div>
+          myRentals.map(rental => {
+            // Determine if we should treat this as a "Deal" (flat rate) or "Standard" (daily rate)
+            const isDeal = rental.totalPrice !== undefined && rental.totalPrice !== null;
+            const finalCost = getRentalCost(rental); // This is always CENTS
+            const calculatedDays = Math.max(1, Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)));
 
-              {/* --- PAY BUTTON LOGIC --- */}
-              {rental.status === 'approved' && (
-                <CardFooter className="p-4 pt-0">
-                    <PayButton 
-                        rentalId={rental.id}
-                        title={rental.item.title}
-                        pricePerDay={rental.item.pricePerDay} // Kept for reference but...
-                        days={Math.max(1, Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)))}
-                        imageUrl={rental.item.imageUrl}
-                        ownerId={rental.item.ownerId}
-                        // If PayButton supports 'totalAmount', you should pass getRentalCost(rental) here!
-                    />
-                </CardFooter>
-              )}
-            </Card>
-          ))
+            return (
+                <Card key={rental.id} className="overflow-hidden flex flex-col justify-between">
+                <div>
+                    <div className="h-32 w-full overflow-hidden relative">
+                        <img 
+                        src={rental.item.imageUrl} 
+                        alt={rental.item.title} 
+                        className="w-full h-full object-cover"
+                        />
+                        <div className="absolute top-2 right-2">
+                        <StatusBadge status={rental.status} />
+                        </div>
+                    </div>
+                    <CardHeader className="p-4 pb-2">
+                        <CardTitle className="text-base line-clamp-1">{rental.item.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-0 text-sm">
+                        <div className="flex justify-between items-center mt-2">
+                        <span className="text-muted-foreground">
+                            {format(new Date(rental.startDate), "MMM d")} - {format(new Date(rental.endDate), "MMM d")}
+                        </span>
+                        </div>
+                    </CardContent>
+                </div>
+
+                {/* --- PAY BUTTON LOGIC --- */}
+                {rental.status === 'approved' && (
+                    <CardFooter className="p-4 pt-0">
+                        {/* FIX: If it's a deal, we pass the FULL PRICE as 'pricePerDay' and set days=1 
+                            This forces the stripe checkout to equal the exact Negotiated Total */}
+                        <PayButton 
+                            rentalId={rental.id}
+                            title={rental.item.title}
+                            pricePerDay={isDeal ? finalCost : rental.item.pricePerDay} 
+                            days={isDeal ? 1 : calculatedDays}
+                            imageUrl={rental.item.imageUrl}
+                            ownerId={rental.item.ownerId}
+                        />
+                    </CardFooter>
+                )}
+                </Card>
+            );
+          })
         )}
       </div>
     );
