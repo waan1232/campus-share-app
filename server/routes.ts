@@ -10,9 +10,8 @@ import multer from "multer";
 import path from "path";
 import express from "express";
 import fs from "fs";
-import { sendVerificationEmail } from "./mailer"; 
+import { sendVerificationEmail, sendUsernameRecoveryEmail, sendPasswordResetEmail } from "./mailer"; 
 import Stripe from "stripe";
-import { sendUsernameRecoveryEmail, sendPasswordResetEmail } from "./mailer";
 
 // Initialize Stripe
 // We use a fallback key to prevent crashes during build, but functionality requires the real key
@@ -119,9 +118,6 @@ export async function registerRoutes(
       let accountId = user.stripe_account_id; 
 
       // Create account if not exists
-      // ... inside /api/stripe/onboard
-
-      // Create account if not exists
       if (!accountId) {
         const account = await stripe.accounts.create({
           type: "express",
@@ -191,8 +187,6 @@ export async function registerRoutes(
     }
   });
 
-  // 3. CHECKOUT SESSION (Split Payments)
-  // 3. CHECKOUT SESSION (With URL Auto-Fix)
   // 3. CHECKOUT SESSION (Fixed Image URL)
   app.post("/api/create-checkout-session", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
@@ -216,7 +210,7 @@ export async function registerRoutes(
       baseUrl = `https://${baseUrl}`;
     }
 
-    // 2. Fix the Image URL (THIS IS THE FIX)
+    // 2. Fix the Image URL
     // If image is "/uploads/file.jpg", turn it into "https://campusshareapp.com/uploads/file.jpg"
     let fullImageUrl = image;
     if (image && !image.startsWith("http")) {
@@ -316,7 +310,8 @@ export async function registerRoutes(
       res.sendStatus(200);
     });
   });
-// --- RECOVERY ROUTES ---
+
+  // --- RECOVERY ROUTES ---
 
   // 1. Forgot Username
   app.post("/api/auth/forgot-username", async (req, res) => {
@@ -375,6 +370,7 @@ export async function registerRoutes(
 
     res.json({ message: "Password updated! You can now log in." });
   });
+
   // User Profile
   app.patch("/api/user", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).send("Not logged in");
@@ -545,9 +541,64 @@ export async function registerRoutes(
     } catch (e) { res.status(400).json({ message: "Invalid input" }); }
   });
 
-  // Update rental status (with optional price override)
- // Update rental status (with optional price override) AND Notify Renter
- // Get all rentals for the user (as owner or renter)
+  // Update rental status (with optional price override) AND Notify Renter
+  app.patch("/api/rentals/:id/status", async (req, res) => {
+    const { status, totalPrice } = req.body;
+    const rentalId = parseInt(req.params.id);
+
+    try {
+      // 1. Get Rental Details first (so we know who to message)
+      const rentalResult = await pool.query(
+        `SELECT r.*, i.title, i.owner_id, i.id as item_id, r.renter_id
+         FROM rentals r 
+         JOIN items i ON r.item_id = i.id 
+         WHERE r.id = $1`,
+        [rentalId]
+      );
+      const rental = rentalResult.rows[0];
+
+      if (!rental) return res.status(404).json({ error: "Rental not found" });
+
+      // 2. Update Rental Status (and Price if provided)
+      if (totalPrice !== undefined && !isNaN(totalPrice)) {
+        await pool.query(
+          `UPDATE rentals SET status = $1, total_price = $2 WHERE id = $3`,
+          [status, totalPrice, rentalId]
+        );
+      } else {
+        await pool.query(
+          `UPDATE rentals SET status = $1 WHERE id = $2`,
+          [status, rentalId]
+        );
+      }
+
+      // 3. Send Notification Message to the Renter
+      let messageContent = "";
+      if (status === "approved") {
+        messageContent = `Great news! Your request for "${rental.title}" has been approved. You can now proceed to payment in your Dashboard.`;
+      } else if (status === "rejected") {
+        messageContent = `Update: Your request for "${rental.title}" was declined by the owner.`;
+      } else if (status === "completed") {
+        messageContent = `The rental for "${rental.title}" has been marked as returned. Thanks for using CampusShare!`;
+      }
+
+      // Only send a message if we defined one above
+      if (messageContent) {
+        await pool.query(
+          `INSERT INTO messages (sender_id, receiver_id, content, item_id, sent_at, read)
+           VALUES ($1, $2, $3, $4, NOW(), false)`,
+          [rental.owner_id, rental.renter_id, messageContent, rental.item_id]
+        );
+      }
+
+      res.json({ message: "Rental status updated and notification sent" });
+    } catch (error: any) {
+      console.error("Error updating rental:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get all rentals for the user (as owner or renter)
   app.get("/api/rentals", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     
@@ -590,7 +641,6 @@ export async function registerRoutes(
   });
 
   // --- MESSAGING SYSTEM ROUTES ---
-  // Update message offer status AND Auto-Approve Rental
   // Update message offer status AND Auto-Approve Rental
   app.patch("/api/messages/:id/offer", async (req, res) => {
     const { offer_status } = req.body;
